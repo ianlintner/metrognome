@@ -83,10 +83,23 @@ jobs:
           echo "--- editor_settings contents (android lines) ---"
           grep -i android "$SETTINGS" || echo "(no android lines found)"
 
+      - name: Verify Android toolchain layout
+        run: |
+          echo "--- ANDROID_HOME=$ANDROID_HOME ---"
+          ls "$ANDROID_HOME" || echo "(no ANDROID_HOME dir)"
+          echo "--- /usr/local/lib/android/sdk ---"
+          ls /usr/local/lib/android/sdk || echo "(missing)"
+          echo "--- android/ build template ---"
+          ls -la android/ android/build 2>&1 | head -30
+          echo "--- export_presets.cfg Android section ---"
+          awk '/^\[preset\.1\]/,/^\[preset\.[0-9]+\]/' export_presets.cfg | head -40
+          echo "--- editor settings file used by Godot 4.6 ---"
+          ls -la ~/.config/godot/ 2>&1
+
       - name: Export Android APK
         run: |
           mkdir -p build/android
-          godot --headless --export-release "Android" build/android/metrognome.apk --path .
+          godot --headless --verbose --export-release "Android" build/android/metrognome.apk --path . 2>&1 | tail -100
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
