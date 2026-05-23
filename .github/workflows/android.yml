@@ -27,8 +27,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Android SDK packages
-        run: |
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Download Godot
         run: |
@@ -47,8 +46,7 @@ jobs:
       - name: Write release keystore from secret
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          echo "$KEYSTORE_BASE64" | base64 --decode > metrognome-release.keystore
+        run: echo "$KEYSTORE_BASE64" | base64 --decode > metrognome-release.keystore
 
       - name: Configure keystore in export preset
         env:
@@ -59,17 +57,17 @@ jobs:
           sed -i "s|keystore/release_user=\"\"|keystore/release_user=\"$KEYSTORE_USER\"|" export_presets.cfg
           sed -i "s|keystore/release_password=\"\"|keystore/release_password=\"$KEYSTORE_PASS\"|" export_presets.cfg
 
-      - name: Configure Godot editor settings (Android SDK path)
-        run: |
-          mkdir -p ~/.config/godot
-          cat > ~/.config/godot/editor_settings-4.tres << 'EOF'
-          [gd_resource type="EditorSettings" format=3]
-          [resource]
-          export/android/android_sdk_path = "/usr/local/lib/android/sdk"
-          EOF
-
-      - name: Import project assets
+      - name: Import project assets (creates editor_settings)
         run: godot --headless --editor --quit --path . 2>&1 | tail -5
+
+      - name: Inject Android SDK path into Godot editor settings
+        run: |
+          SETTINGS=~/.config/godot/editor_settings-4.tres
+          [ -f "$SETTINGS" ] || { mkdir -p ~/.config/godot; printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n' > "$SETTINGS"; }
+          sed -i '/export\/android\//d' "$SETTINGS"
+          printf '\nexport/android/android_sdk_path = "/usr/local/lib/android/sdk"\n' >> "$SETTINGS"
+          printf 'export/android/java_sdk_path = "%s"\n' "$JAVA_HOME" >> "$SETTINGS"
+          grep -i android "$SETTINGS"
 
       - name: Export Android APK
         run: |
