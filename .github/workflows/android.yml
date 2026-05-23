@@ -12,7 +12,7 @@ env:
 
 jobs:
   build-android:
-    name: Build Android AAB
+    name: Build Android APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -60,18 +60,16 @@ jobs:
           sed -i "s|keystore/release_password=\"\"|keystore/release_password=\"$KEYSTORE_PASS\"|" export_presets.cfg
 
       - name: Import project assets
-        run: |
-          godot --headless --editor --quit --path . \
-            --android-sdk "$ANDROID_SDK_ROOT" 2>&1 | tail -5
+        run: godot --headless --editor --quit --path . 2>&1 | tail -5
 
-      - name: Export Android AAB
+      - name: Export Android APK
         run: |
           mkdir -p build/android
-          godot --headless --export-release "Android" build/android/metrognome.aab --path .
+          godot --headless --export-release "Android" build/android/metrognome.apk --path .
 
-      - name: Upload AAB artifact
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: metrognome-android-aab
-          path: build/android/metrognome.aab
+          name: metrognome-android-apk
+          path: build/android/metrognome.apk
           retention-days: 30
