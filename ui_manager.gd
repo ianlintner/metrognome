@@ -38,6 +38,15 @@ var _beat_dots_container: HBoxContainer
 var _beat_dots: Array[ColorRect] = []
 var _time_sig_display_label: Label
 
+# References needed for responsive updates
+var _margin: MarginContainer
+var _label_bpm: Label
+var _label_time: Label
+var _label_sound: Label
+var _label_accent: Label
+var _label_vol: Label
+var _all_labels: Array[Label] = []
+
 var _is_playing: bool = false
 var _current_beats: int = 4
 var _current_unit: int = 4
@@ -63,23 +72,21 @@ func _ready() -> void:
 	style.corner_radius_top_right = 12
 	panel.add_theme_stylebox_override("panel", style)
 
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 16)
-	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_right", 16)
-	margin.add_theme_constant_override("margin_bottom", 10)
-	panel.add_child(margin)
+	_margin = MarginContainer.new()
+	_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	panel.add_child(_margin)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 6)
-	margin.add_child(vbox)
+	_margin.add_child(vbox)
 
+	# Row 1: BPM + Time signature
 	var row1 := HBoxContainer.new()
 	row1.add_theme_constant_override("separation", 12)
 	vbox.add_child(row1)
 
-	row1.add_child(_make_label("BPM"))
+	_label_bpm = _make_label("BPM")
+	row1.add_child(_label_bpm)
 
 	_bpm_slider = HSlider.new()
 	_bpm_slider.min_value = 20
@@ -91,10 +98,11 @@ func _ready() -> void:
 	row1.add_child(_bpm_slider)
 
 	_bpm_value_label = _make_label("120")
-	_bpm_value_label.custom_minimum_size = Vector2(36, 0)
 	row1.add_child(_bpm_value_label)
 
-	row1.add_child(_make_label("Time"))
+	_label_time = _make_label("Time")
+	row1.add_child(_label_time)
+
 	_time_sig_button = OptionButton.new()
 	for ts in TIME_SIGNATURES:
 		_time_sig_button.add_item(ts[0])
@@ -102,25 +110,32 @@ func _ready() -> void:
 	_time_sig_button.item_selected.connect(_on_time_sig_changed)
 	row1.add_child(_time_sig_button)
 
+	# Row 2: Sound + Accent + Volume
 	var row2 := HBoxContainer.new()
 	row2.add_theme_constant_override("separation", 12)
 	vbox.add_child(row2)
 
-	row2.add_child(_make_label("Sound"))
+	_label_sound = _make_label("Sound")
+	row2.add_child(_label_sound)
+
 	_sound_button = OptionButton.new()
 	for s in SOUND_NAMES:
 		_sound_button.add_item(s)
 	_sound_button.item_selected.connect(_on_sound_changed)
 	row2.add_child(_sound_button)
 
-	row2.add_child(_make_label("Accent"))
+	_label_accent = _make_label("Accent")
+	row2.add_child(_label_accent)
+
 	_accent_button = OptionButton.new()
 	for a in ACCENT_NAMES:
 		_accent_button.add_item(a)
 	_accent_button.item_selected.connect(_on_accent_changed)
 	row2.add_child(_accent_button)
 
-	row2.add_child(_make_label("Vol"))
+	_label_vol = _make_label("Vol")
+	row2.add_child(_label_vol)
+
 	_volume_slider = HSlider.new()
 	_volume_slider.min_value = 0
 	_volume_slider.max_value = 100
@@ -131,9 +146,9 @@ func _ready() -> void:
 	row2.add_child(_volume_slider)
 
 	_volume_value_label = _make_label("80%")
-	_volume_value_label.custom_minimum_size = Vector2(36, 0)
 	row2.add_child(_volume_value_label)
 
+	# Row 3: Play button + beat dots + time sig display
 	var row3 := HBoxContainer.new()
 	row3.add_theme_constant_override("separation", 10)
 	row3.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -141,7 +156,6 @@ func _ready() -> void:
 
 	_play_button = Button.new()
 	_play_button.text = "▶ Play"
-	_play_button.custom_minimum_size = Vector2(100, 36)
 	_play_button.pressed.connect(_on_play_pressed)
 	row3.add_child(_play_button)
 
@@ -152,11 +166,79 @@ func _ready() -> void:
 	row3.add_child(_beat_dots_container)
 
 	_time_sig_display_label = _make_label("4/4")
-	_time_sig_display_label.custom_minimum_size = Vector2(50, 0)
 	row3.add_child(_time_sig_display_label)
 
 	_create_beat_dots(4)
 	_update_play_button_style()
+	_apply_responsive_layout()
+	get_viewport().size_changed.connect(_apply_responsive_layout)
+
+
+func _apply_responsive_layout() -> void:
+	var vp := get_viewport().get_visible_rect().size
+
+	# Scale relative to 1280-wide desktop baseline, clamped for phone/tablet range
+	var ui_scale := clampf(vp.x / 1280.0, 0.65, 1.6)
+
+	# Safe area: avoid home indicator / notch on iPhone
+	var safe := DisplayServer.get_display_safe_area()
+	var bottom_inset := int(vp.y - (safe.position.y + safe.size.y))
+	bottom_inset = maxi(0, bottom_inset)
+
+	# Panel height: taller on tablet/large phone, accounts for safe area
+	var panel_h := int(clampf(vp.y * 0.24, 160.0, 300.0))
+	offset_top = -(panel_h + bottom_inset)
+	offset_bottom = 0
+
+	# Inner margins — extra bottom pad covers home indicator
+	var h_pad := int(clampf(16.0 * ui_scale, 12.0, 28.0))
+	var v_pad := int(clampf(10.0 * ui_scale, 8.0, 18.0))
+	_margin.add_theme_constant_override("margin_left", h_pad)
+	_margin.add_theme_constant_override("margin_right", h_pad)
+	_margin.add_theme_constant_override("margin_top", v_pad)
+	_margin.add_theme_constant_override("margin_bottom", v_pad + bottom_inset)
+
+	# Font size
+	var font_size := int(clampf(14.0 * ui_scale, 14.0, 22.0))
+	for lbl in _all_labels:
+		lbl.add_theme_font_size_override("font_size", font_size)
+
+	# Hide short labels on very narrow screens to free space for controls
+	var show_labels: bool = vp.x >= 520.0
+	_label_bpm.visible = show_labels
+	_label_time.visible = show_labels
+	_label_sound.visible = show_labels
+	_label_accent.visible = show_labels
+	_label_vol.visible = show_labels
+
+	# Play button — Apple HIG minimum tap target is 44 pt
+	var btn_h := int(clampf(44.0 * ui_scale, 44.0, 68.0))
+	var btn_w := int(clampf(100.0 * ui_scale, 100.0, 180.0))
+	_play_button.custom_minimum_size = Vector2(btn_w, btn_h)
+	_update_play_button_style()
+
+	# Time sig display label width
+	_time_sig_display_label.custom_minimum_size = Vector2(int(50.0 * ui_scale), 0)
+
+	# BPM and volume value label widths
+	_bpm_value_label.custom_minimum_size = Vector2(int(40.0 * ui_scale), 0)
+	_volume_value_label.custom_minimum_size = Vector2(int(40.0 * ui_scale), 0)
+
+	# OptionButton touch height
+	var opt_h := int(clampf(36.0 * ui_scale, 36.0, 56.0))
+	for btn in [_time_sig_button, _sound_button, _accent_button]:
+		btn.custom_minimum_size = Vector2(0, opt_h)
+
+	# Slider grab area — larger hit zone on mobile touch
+	var grab_h := int(clampf(20.0 * ui_scale, 20.0, 40.0))
+	_bpm_slider.add_theme_constant_override("grab_height", grab_h)
+	_volume_slider.add_theme_constant_override("grab_height", grab_h)
+
+	# Beat dots
+	var dot_size := int(clampf(18.0 * ui_scale, 18.0, 32.0))
+	for dot in _beat_dots:
+		dot.custom_minimum_size = Vector2(dot_size, dot_size)
+	_beat_dots_container.add_theme_constant_override("separation", int(6.0 * ui_scale))
 
 
 func _make_label(text: String) -> Label:
@@ -165,6 +247,7 @@ func _make_label(text: String) -> Label:
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.add_theme_color_override("font_color", LABEL_COLOR)
 	label.add_theme_font_size_override("font_size", 14)
+	_all_labels.append(label)
 	return label
 
 
@@ -178,6 +261,13 @@ func _create_beat_dots(count: int) -> void:
 		dot.color = ACCENT_COLOR if i == 0 else DIM_COLOR
 		_beat_dots.append(dot)
 		_beat_dots_container.add_child(dot)
+	# Resize dots to match current scale if layout already applied
+	if get_viewport() != null and is_inside_tree():
+		var vp := get_viewport().get_visible_rect().size
+		var ui_scale := clampf(vp.x / 1280.0, 0.65, 1.6)
+		var dot_size := int(clampf(18.0 * ui_scale, 18.0, 32.0))
+		for dot in _beat_dots:
+			dot.custom_minimum_size = Vector2(dot_size, dot_size)
 
 
 func on_tick(beat: int, _total_beats: int) -> void:
@@ -226,17 +316,26 @@ func _on_play_pressed() -> void:
 func _update_play_button_style() -> void:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = PAUSE_COLOR if _is_playing else PLAY_COLOR
-	sb.corner_radius_bottom_left = 6
-	sb.corner_radius_bottom_right = 6
-	sb.corner_radius_top_left = 6
-	sb.corner_radius_top_right = 6
+	sb.corner_radius_bottom_left = 8
+	sb.corner_radius_bottom_right = 8
+	sb.corner_radius_top_left = 8
+	sb.corner_radius_top_right = 8
 	_play_button.add_theme_stylebox_override("normal", sb)
 
 	var sb_h := StyleBoxFlat.new()
 	var base: Color = PAUSE_COLOR if _is_playing else PLAY_COLOR
 	sb_h.bg_color = Color(base.r * 0.8, base.g * 0.8, base.b * 0.8)
-	sb_h.corner_radius_bottom_left = 6
-	sb_h.corner_radius_bottom_right = 6
-	sb_h.corner_radius_top_left = 6
-	sb_h.corner_radius_top_right = 6
+	sb_h.corner_radius_bottom_left = 8
+	sb_h.corner_radius_bottom_right = 8
+	sb_h.corner_radius_top_left = 8
+	sb_h.corner_radius_top_right = 8
 	_play_button.add_theme_stylebox_override("hover", sb_h)
+
+	# Pressed state (important for touch — no hover on mobile)
+	var sb_p := StyleBoxFlat.new()
+	sb_p.bg_color = Color(base.r * 0.65, base.g * 0.65, base.b * 0.65)
+	sb_p.corner_radius_bottom_left = 8
+	sb_p.corner_radius_bottom_right = 8
+	sb_p.corner_radius_top_left = 8
+	sb_p.corner_radius_top_right = 8
+	_play_button.add_theme_stylebox_override("pressed", sb_p)
