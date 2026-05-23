@@ -61,10 +61,11 @@ jobs:
           KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
         run: |
           # Restore Android package metadata that Godot's editor sometimes wipes on re-save
-          sed -i 's|export_path=""|export_path="build/android/metrognome.aab"|' export_presets.cfg
-          sed -i 's|package/unique_name="com.codelintner.\$genname"|package/unique_name="com.codelintner.metrognomes"|' export_presets.cfg
-          sed -i 's|package/name="metrognomes"|package/name="Metrognome"|' export_presets.cfg
-          sed -i 's|version/name=""|version/name="1.0.1"|' export_presets.cfg
+          sed -i 's|export_path="[^"]*"|export_path="build/android/metrognome.aab"|' export_presets.cfg
+          sed -i 's|gradle_build/export_format=[0-9]*|gradle_build/export_format=1|' export_presets.cfg
+          sed -i 's|package/unique_name="[^"]*"|package/unique_name="com.codelintner.metrognomes"|' export_presets.cfg
+          sed -i 's|package/name="[^"]*"|package/name="Metrognome"|' export_presets.cfg
+          sed -i 's|version/name="[^"]*"|version/name="1.0.5"|' export_presets.cfg
 
           # Inject keystore lines after package/signed=true (substitute if present, insert if missing)
           KEYSTORE_PATH="$(pwd)/metrognome-release.keystore"
