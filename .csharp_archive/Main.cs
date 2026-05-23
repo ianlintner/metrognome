@@ -6,8 +6,12 @@ public partial class Main : Node3D
 {
 	private Metronome _metronome;
 	private AudioClicker _audioClicker;
-	private GnomePulse _gnomePulse;
 	private UIManager _uiManager;
+	private Camera3D _camera;
+
+	private readonly System.Collections.Generic.List<GnomePulse> _gnomes = new();
+	private PackedScene _gnomeScene;
+	private const float GnomeSpacing = 1.8f;
 
 	private readonly System.Collections.Generic.List<(Vector2 Pos, float Radius)> _occupied = new();
 	private readonly System.Collections.Generic.List<AnimationPlayer> _animPlayers = new();
@@ -104,24 +108,70 @@ public partial class Main : Node3D
 
 	private void SetupGnome()
 	{
-		_gnomePulse = new GnomePulse();
-		_gnomePulse.Name = "GnomeRoot";
-		_gnomePulse.Position = new Vector3(0, 1.5f, 0);
-		_gnomePulse.BaseBounceHeight = 0.25f;
-		_gnomePulse.AccentBounceHeight = 0.55f;
-		AddChild(_gnomePulse);
-
-		var gnomeScene = GD.Load<PackedScene>("res://assets/gnome/garden_gnome.glb");
-		if (gnomeScene != null)
-		{
-			var gnomeModel = gnomeScene.Instantiate<Node3D>();
-			gnomeModel.Name = "GnomeModel";
-			gnomeModel.Scale = new Vector3(1.5f, 1.5f, 1.5f);
-			_gnomePulse.AddChild(gnomeModel);
-		}
-		else
+		_gnomeScene = GD.Load<PackedScene>("res://assets/gnome/garden_gnome.glb");
+		if (_gnomeScene == null)
 		{
 			GD.PrintErr("Failed to load gnome model from res://assets/gnome/garden_gnome.glb");
+			return;
+		}
+		RebuildGnomeLine(4);
+	}
+
+	private void RebuildGnomeLine(int count)
+	{
+		foreach (var g in _gnomes)
+		{
+			g.QueueFree();
+		}
+		_gnomes.Clear();
+
+		if (_gnomeScene == null)
+		{
+			return;
+		}
+
+		float totalWidth = (count - 1) * GnomeSpacing;
+		float startX = -totalWidth / 2f;
+
+		for (int i = 0; i < count; i++)
+		{
+			var pulse = new GnomePulse();
+			pulse.Name = $"Gnome{i}";
+			pulse.Position = new Vector3(-(startX + i * GnomeSpacing), 1.5f, 0);
+			pulse.BaseBounceHeight = 0.25f;
+			pulse.AccentBounceHeight = 1.2f;
+			AddChild(pulse);
+
+			var model = _gnomeScene.Instantiate<Node3D>();
+			model.Name = "GnomeModel";
+			model.Scale = new Vector3(1.5f, 1.5f, 1.5f);
+			pulse.AddChild(model);
+
+			_gnomes.Add(pulse);
+		}
+		OrientGnomesToCamera();
+	}
+
+	private void OrientGnomesToCamera()
+	{
+		if (_camera == null)
+		{
+			return;
+		}
+		foreach (var pulse in _gnomes)
+		{
+			var model = pulse.GetNodeOrNull<Node3D>("GnomeModel");
+			if (model == null)
+			{
+				continue;
+			}
+			var targetXZ = new Vector3(_camera.GlobalPosition.X, model.GlobalPosition.Y, _camera.GlobalPosition.Z);
+			if ((targetXZ - model.GlobalPosition).LengthSquared() < 0.0001f)
+			{
+				continue;
+			}
+			model.LookAt(targetXZ, Vector3.Up);
+			model.RotateObjectLocal(Vector3.Up, -Mathf.Pi / 2f);
 		}
 	}
 
@@ -491,7 +541,11 @@ public partial class Main : Node3D
 		canvasLayer.AddChild(_uiManager);
 
 		_uiManager.BPMChanged += bpm => _metronome.BPM = bpm;
-		_uiManager.TimeSignatureChanged += (beats, unit) => _metronome.SetTimeSignature(beats, unit);
+		_uiManager.TimeSignatureChanged += (beats, unit) =>
+		{
+			_metronome.SetTimeSignature(beats, unit);
+			RebuildGnomeLine(beats);
+		};
 		_uiManager.VolumeChanged += vol => _audioClicker.Volume = vol;
 		_uiManager.SoundChanged += type => _audioClicker.SetSoundType(type);
 		_uiManager.AccentModeChanged += mode => _metronome.SetAccentMode(mode);
@@ -530,26 +584,23 @@ public partial class Main : Node3D
 				_audioClicker.PlayClick();
 			}
 
-			_gnomePulse.OnTick(isAccent);
+			if (beat >= 0 && beat < _gnomes.Count)
+			{
+				_gnomes[beat].OnTick(isAccent);
+			}
 			_uiManager.OnTick(beat, total);
 		};
 	}
 
 	private void SetupCamera()
 	{
-		var camera = new Camera3D();
-		camera.Name = "Camera3D";
-		camera.Fov = 70f;
-		AddChild(camera);
-		camera.Position = new Vector3(0f, 5.0f, -14f);
-		camera.LookAt(new Vector3(0, 1.4f, 0));
+		_camera = new Camera3D();
+		_camera.Name = "Camera3D";
+		_camera.Fov = 70f;
+		AddChild(_camera);
+		_camera.Position = new Vector3(0f, 5.0f, -14f);
+		_camera.LookAt(new Vector3(0, 1.4f, 0));
 
-		var gnomeModel = _gnomePulse.GetNodeOrNull<Node3D>("GnomeModel");
-		if (gnomeModel != null)
-		{
-			var targetXZ = new Vector3(camera.GlobalPosition.X, gnomeModel.GlobalPosition.Y, camera.GlobalPosition.Z);
-			gnomeModel.LookAt(targetXZ, Vector3.Up);
-			gnomeModel.RotateObjectLocal(Vector3.Up, -Mathf.Pi / 2f);
-		}
+		OrientGnomesToCamera();
 	}
 }
