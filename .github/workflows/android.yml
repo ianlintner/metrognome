@@ -43,6 +43,13 @@ jobs:
           unzip -q "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz"
           mv templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/
 
+      - name: Install Android Gradle build template
+        run: |
+          mkdir -p android/build
+          unzip -q -o ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/android_source.zip -d android/build/
+          printf '%s.%s\n' "${GODOT_VERSION}" "${GODOT_RELEASE}" > android/.build_version
+          touch android/build/.gdignore
+
       - name: Write release keystore from secret
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -62,12 +69,19 @@ jobs:
 
       - name: Inject Android SDK path into Godot editor settings
         run: |
-          SETTINGS=~/.config/godot/editor_settings-4.tres
-          [ -f "$SETTINGS" ] || { mkdir -p ~/.config/godot; printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n' > "$SETTINGS"; }
+          mkdir -p ~/.config/godot
+          SETTINGS=~/.config/godot/editor_settings-4.6.tres
+          # Use the version-specific filename Godot 4.6 actually reads
+          if [ ! -f "$SETTINGS" ]; then
+            # Fall back to existing major-only file if Godot wrote one
+            [ -f ~/.config/godot/editor_settings-4.tres ] && cp ~/.config/godot/editor_settings-4.tres "$SETTINGS"
+          fi
+          [ -f "$SETTINGS" ] || printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n' > "$SETTINGS"
           sed -i '/export\/android\//d' "$SETTINGS"
-          printf '\nexport/android/android_sdk_path = "/usr/local/lib/android/sdk"\n' >> "$SETTINGS"
+          printf 'export/android/android_sdk_path = "/usr/local/lib/android/sdk"\n' >> "$SETTINGS"
           printf 'export/android/java_sdk_path = "%s"\n' "$JAVA_HOME" >> "$SETTINGS"
-          grep -i android "$SETTINGS"
+          echo "--- editor_settings contents (android lines) ---"
+          grep -i android "$SETTINGS" || echo "(no android lines found)"
 
       - name: Export Android APK
         run: |

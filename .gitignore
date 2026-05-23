@@ -60,6 +60,9 @@ out/
 *.keystore
 *.jks
 
+# Godot Android build template (installed locally by editor — ~1GB, not for VCS)
+android/
+
 # Local AI assistant state (session notes, transcripts)
 .remember/
 .claude/
