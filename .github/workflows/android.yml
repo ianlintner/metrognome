@@ -128,5 +128,5 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.GCP_PLAY_KEY_JSON }}
           packageName: com.codelintner.metrognomes
           releaseFiles: build/android/metrognome.aab
-          track: internal
+          tracks: internal
           status: draft
