@@ -12,7 +12,7 @@ env:
 
 jobs:
   build-android:
-    name: Build Android APK
+    name: Build Android AAB
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,14 +96,14 @@ jobs:
           echo "--- editor settings file used by Godot 4.6 ---"
           ls -la ~/.config/godot/ 2>&1
 
-      - name: Export Android APK
+      - name: Export Android AAB
         run: |
           mkdir -p build/android
-          godot --headless --verbose --export-release "Android" build/android/metrognome.apk --path . 2>&1 | tail -100
+          godot --headless --verbose --export-release "Android" build/android/metrognome.aab --path . 2>&1 | tail -100
 
-      - name: Upload APK artifact
+      - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: metrognome-android-apk
-          path: build/android/metrognome.apk
+          name: metrognome-android-aab
+          path: build/android/metrognome.aab
           retention-days: 30
