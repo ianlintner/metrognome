@@ -128,15 +128,25 @@ jobs:
         run: |
           # itch.io wants APK, not AAB — flip export_format to 0
           sed -i 's|gradle_build/export_format=1|gradle_build/export_format=0|' export_presets.cfg
-          sed -i 's|export_path="build/android/metrognome.aab"|export_path="build/android/metrognome.apk"|' export_presets.cfg
+          sed -i 's|export_path=""|export_path="build/android/metrognome.apk"|' export_presets.cfg
           # Restore package metadata if Godot editor left placeholders
           sed -i 's|package/unique_name="com.codelintner.\$genname"|package/unique_name="com.codelintner.metrognomes"|' export_presets.cfg
           sed -i 's|package/name="metrognomes"|package/name="Metrognome"|' export_presets.cfg
           sed -i 's|version/name=""|version/name="${{ steps.ver.outputs.version }}"|' export_presets.cfg
-          # Inject keystore
-          sed -i "s|keystore/release=\"\"|keystore/release=\"$(pwd)/metrognome-release.keystore\"|" export_presets.cfg
-          sed -i "s|keystore/release_user=\"\"|keystore/release_user=\"$KEYSTORE_USER\"|" export_presets.cfg
-          sed -i "s|keystore/release_password=\"\"|keystore/release_password=\"$KEYSTORE_PASS\"|" export_presets.cfg
+          # Insert keystore lines after package/signed=true if not already present
+          # (Godot's editor strips them on re-save). sed substitutes when found,
+          # otherwise injects.
+          KEYSTORE_PATH="$(pwd)/metrognome-release.keystore"
+          if grep -q '^keystore/release=' export_presets.cfg; then
+            sed -i "s|^keystore/release=.*|keystore/release=\"$KEYSTORE_PATH\"|" export_presets.cfg
+            sed -i "s|^keystore/release_user=.*|keystore/release_user=\"$KEYSTORE_USER\"|" export_presets.cfg
+            sed -i "s|^keystore/release_password=.*|keystore/release_password=\"$KEYSTORE_PASS\"|" export_presets.cfg
+          else
+            # Insert after package/signed=true (first occurrence — the Android preset)
+            sed -i "0,/^package\/signed=true$/{s|^package/signed=true$|package/signed=true\nkeystore/release=\"$KEYSTORE_PATH\"\nkeystore/release_user=\"$KEYSTORE_USER\"\nkeystore/release_password=\"$KEYSTORE_PASS\"|}" export_presets.cfg
+          fi
+          # Verify config (mask password)
+          grep -E "keystore/release|package/signed|package/unique_name|version/name|export_format|gradle_build/use" export_presets.cfg | sed "s|$KEYSTORE_PASS|***|g"
 
       - name: Import project assets (creates editor settings)
         run: godot --headless --editor --quit --path . 2>&1 | tail -5
