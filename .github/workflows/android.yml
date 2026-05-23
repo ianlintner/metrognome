@@ -59,6 +59,15 @@ jobs:
           sed -i "s|keystore/release_user=\"\"|keystore/release_user=\"$KEYSTORE_USER\"|" export_presets.cfg
           sed -i "s|keystore/release_password=\"\"|keystore/release_password=\"$KEYSTORE_PASS\"|" export_presets.cfg
 
+      - name: Configure Godot editor settings (Android SDK path)
+        run: |
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-4.tres << 'EOF'
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/android_sdk_path = "/usr/local/lib/android/sdk"
+          EOF
+
       - name: Import project assets
         run: godot --headless --editor --quit --path . 2>&1 | tail -5
 
