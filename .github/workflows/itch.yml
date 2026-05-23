@@ -1,0 +1,314 @@
+name: itch.io
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "User-facing version label (defaults to tag without leading v, or '0.0.0-dev')"
+        required: false
+        default: ""
+
+env:
+  GODOT_VERSION: "4.6.2"
+  GODOT_RELEASE: "stable"
+  ITCH_PROJECT: "growlbear/metrognomes"
+
+jobs:
+  publish-web:
+    name: Publish Web to itch.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            VER="${{ github.event.inputs.version }}"
+            [ -z "$VER" ] && VER="0.0.0-dev"
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Download Godot + export templates
+        run: |
+          wget -q "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -q "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip"
+          chmod +x "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64"
+          sudo mv "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
+
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}
+          wget -q "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz"
+          unzip -q "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz"
+          mv templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/
+
+      - name: Import project assets
+        run: godot --headless --editor --quit --path . 2>&1 | tail -5
+
+      - name: Export Web build
+        run: |
+          mkdir -p build/web
+          godot --headless --export-release "Web" build/web/index.html --path .
+
+      - name: Install butler
+        run: |
+          curl -sL "https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default" -o butler.zip
+          unzip -q butler.zip -d butler-bin
+          chmod +x butler-bin/butler
+          ./butler-bin/butler -V
+
+      - name: Push to itch.io html5 channel
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          ./butler-bin/butler push build/web "${ITCH_PROJECT}:html5" --userversion "${{ steps.ver.outputs.version }}"
+          ./butler-bin/butler status "${ITCH_PROJECT}:html5"
+
+  publish-android:
+    name: Publish Android APK to itch.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            VER="${{ github.event.inputs.version }}"
+            [ -z "$VER" ] && VER="0.0.0-dev"
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Download Godot + export templates
+        run: |
+          wget -q "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -q "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip"
+          chmod +x "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64"
+          sudo mv "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
+
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}
+          wget -q "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz"
+          unzip -q "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz"
+          mv templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/
+
+      - name: Install Android Gradle build template
+        run: |
+          mkdir -p android/build
+          unzip -q -o ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/android_source.zip -d android/build/
+          printf '%s.%s\n' "${GODOT_VERSION}" "${GODOT_RELEASE}" > android/.build_version
+          touch android/build/.gdignore
+
+      - name: Write release keystore from secret
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 --decode > metrognome-release.keystore
+
+      - name: Configure preset (force APK, inject keystore, restore metadata)
+        env:
+          KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+        run: |
+          # itch.io wants APK, not AAB — flip export_format to 0
+          sed -i 's|gradle_build/export_format=1|gradle_build/export_format=0|' export_presets.cfg
+          sed -i 's|export_path="build/android/metrognome.aab"|export_path="build/android/metrognome.apk"|' export_presets.cfg
+          # Restore package metadata if Godot editor left placeholders
+          sed -i 's|package/unique_name="com.codelintner.\$genname"|package/unique_name="com.codelintner.metrognomes"|' export_presets.cfg
+          sed -i 's|package/name="metrognomes"|package/name="Metrognome"|' export_presets.cfg
+          sed -i 's|version/name=""|version/name="${{ steps.ver.outputs.version }}"|' export_presets.cfg
+          # Inject keystore
+          sed -i "s|keystore/release=\"\"|keystore/release=\"$(pwd)/metrognome-release.keystore\"|" export_presets.cfg
+          sed -i "s|keystore/release_user=\"\"|keystore/release_user=\"$KEYSTORE_USER\"|" export_presets.cfg
+          sed -i "s|keystore/release_password=\"\"|keystore/release_password=\"$KEYSTORE_PASS\"|" export_presets.cfg
+
+      - name: Import project assets (creates editor settings)
+        run: godot --headless --editor --quit --path . 2>&1 | tail -5
+
+      - name: Inject Android SDK path into Godot editor settings
+        run: |
+          mkdir -p ~/.config/godot
+          SETTINGS=~/.config/godot/editor_settings-4.6.tres
+          if [ ! -f "$SETTINGS" ]; then
+            [ -f ~/.config/godot/editor_settings-4.tres ] && cp ~/.config/godot/editor_settings-4.tres "$SETTINGS"
+          fi
+          [ -f "$SETTINGS" ] || printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n' > "$SETTINGS"
+          sed -i '/export\/android\//d' "$SETTINGS"
+          printf 'export/android/android_sdk_path = "/usr/local/lib/android/sdk"\n' >> "$SETTINGS"
+          printf 'export/android/java_sdk_path = "%s"\n' "$JAVA_HOME" >> "$SETTINGS"
+
+      - name: Export Android APK
+        run: |
+          mkdir -p build/android
+          godot --headless --verbose --export-release "Android" build/android/metrognome.apk --path . 2>&1 | tail -60
+
+      - name: Install butler
+        run: |
+          curl -sL "https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default" -o butler.zip
+          unzip -q butler.zip -d butler-bin
+          chmod +x butler-bin/butler
+          ./butler-bin/butler -V
+
+      - name: Push to itch.io android channel
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          ./butler-bin/butler push build/android/metrognome.apk "${ITCH_PROJECT}:android" --userversion "${{ steps.ver.outputs.version }}"
+          ./butler-bin/butler status "${ITCH_PROJECT}:android"
+
+  publish-linux:
+    name: Publish Linux to itch.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            VER="${{ github.event.inputs.version }}"
+            [ -z "$VER" ] && VER="0.0.0-dev"
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Download Godot + export templates
+        run: |
+          wget -q "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -q "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip"
+          chmod +x "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64"
+          sudo mv "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
+
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}
+          wget -q "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz"
+          unzip -q "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz"
+          mv templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/
+
+      - name: Import project assets
+        run: godot --headless --editor --quit --path . 2>&1 | tail -5
+
+      - name: Export Linux x86_64
+        run: |
+          sed -i 's|binary_format/architecture="[^"]*"|binary_format/architecture="x86_64"|' export_presets.cfg
+          mkdir -p build/linux-x86_64
+          godot --headless --export-release "Linux" build/linux-x86_64/metrognome.x86_64 --path .
+          chmod +x build/linux-x86_64/metrognome.x86_64
+          ls -la build/linux-x86_64/
+
+      - name: Export Linux arm64
+        run: |
+          sed -i 's|binary_format/architecture="[^"]*"|binary_format/architecture="arm64"|' export_presets.cfg
+          mkdir -p build/linux-arm64
+          godot --headless --export-release "Linux" build/linux-arm64/metrognome.arm64 --path .
+          chmod +x build/linux-arm64/metrognome.arm64
+          ls -la build/linux-arm64/
+
+      - name: Install butler
+        run: |
+          curl -sL "https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default" -o butler.zip
+          unzip -q butler.zip -d butler-bin
+          chmod +x butler-bin/butler
+
+      - name: Push to itch.io linux channels (x86_64 + arm64)
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          ./butler-bin/butler push build/linux-x86_64 "${ITCH_PROJECT}:linux"       --userversion "${{ steps.ver.outputs.version }}"
+          ./butler-bin/butler push build/linux-arm64  "${ITCH_PROJECT}:linux-arm64" --userversion "${{ steps.ver.outputs.version }}"
+          ./butler-bin/butler status "${ITCH_PROJECT}"
+
+  publish-windows:
+    name: Publish Windows to itch.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VER="${GITHUB_REF_NAME#v}"
+          else
+            VER="${{ github.event.inputs.version }}"
+            [ -z "$VER" ] && VER="0.0.0-dev"
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Install rcedit (Windows resource editing dependency)
+        run: |
+          # Godot uses rcedit to embed icon/version into .exe. The Linux export-host
+          # uses wine + rcedit.exe. Install both.
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends wine64 wine32 2>&1 | tail -5 || true
+          mkdir -p ~/.local/bin
+          wget -q "https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe" -O ~/.local/bin/rcedit.exe
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Download Godot + export templates
+        run: |
+          wget -q "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -q "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip"
+          chmod +x "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64"
+          sudo mv "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
+
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}
+          wget -q "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz"
+          unzip -q "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz"
+          mv templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/
+
+      - name: Override Windows export path
+        run: |
+          sed -i 's|export_path="../../Downloads/metrognome.exe"|export_path="build/windows/metrognome.exe"|' export_presets.cfg
+          # Disable resource embedding (would need rcedit + wine inside Godot)
+          sed -i 's|application/modify_resources=true|application/modify_resources=false|' export_presets.cfg
+
+      - name: Import project assets
+        run: godot --headless --editor --quit --path . 2>&1 | tail -5
+
+      - name: Configure rcedit path in Godot editor settings
+        run: |
+          mkdir -p ~/.config/godot
+          SETTINGS=~/.config/godot/editor_settings-4.6.tres
+          if [ ! -f "$SETTINGS" ]; then
+            [ -f ~/.config/godot/editor_settings-4.tres ] && cp ~/.config/godot/editor_settings-4.tres "$SETTINGS"
+          fi
+          [ -f "$SETTINGS" ] || printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n' > "$SETTINGS"
+          sed -i '/export\/windows\/rcedit/d' "$SETTINGS"
+          printf 'export/windows/rcedit = "%s/.local/bin/rcedit.exe"\n' "$HOME" >> "$SETTINGS"
+
+      - name: Export Windows build
+        run: |
+          mkdir -p build/windows
+          godot --headless --export-release "Windows Desktop" build/windows/metrognome.exe --path .
+          ls -la build/windows/
+
+      - name: Install butler
+        run: |
+          curl -sL "https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default" -o butler.zip
+          unzip -q butler.zip -d butler-bin
+          chmod +x butler-bin/butler
+
+      - name: Push to itch.io windows channel
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          ./butler-bin/butler push build/windows "${ITCH_PROJECT}:windows" --userversion "${{ steps.ver.outputs.version }}"
+          ./butler-bin/butler status "${ITCH_PROJECT}:windows"
