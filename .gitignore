@@ -56,6 +56,10 @@ out/
 .env
 .env.local
 
+# Android signing — never commit keystores
+*.keystore
+*.jks
+
 # Local AI assistant state (session notes, transcripts)
 .remember/
 .claude/
