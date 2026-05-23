@@ -1,0 +1,62 @@
+# Godot 4+ specific ignores
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+
+# Imported translations (automatically generated from CSV files)
+*.translation
+
+# Mono-specific
+.mono/
+data_*/
+mono_crash.*.json
+
+# .NET / C#
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+project.lock.json
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Rider / Visual Studio
+.idea/
+.vs/
+*.csproj.old
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor / IDE
+*.swp
+*.swo
+*~
+
+# Build artifacts
+build/
+dist/
+out/
+
+# Logs
+*.log
+
+# Local secrets / env
+.env
+.env.local
+
+# Local AI assistant state (session notes, transcripts)
+.remember/
+.claude/
+
