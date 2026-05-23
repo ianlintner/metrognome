@@ -2,7 +2,7 @@
 .godot/
 .import/
 export.cfg
-export_presets.cfg
+# export_presets.cfg is committed — no secrets in the Web preset
 
 # Imported translations (automatically generated from CSV files)
 *.translation
