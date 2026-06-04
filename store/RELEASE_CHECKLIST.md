@@ -22,10 +22,10 @@ Source of truth: `assets/branding/` (regenerate with
 ## 2. App configuration — [done]
 
 - [done] Display name **"Metrognome"** (`config/name`; Android `package/name`)
-- [done] Version **1.1.0**, iOS build **6**, Android versionCode **4**
+- [done] Version **1.1.1**, iOS build **7**, Android versionCode **5**
 - [done] iOS `targeted_device_family=3` (iPhone + iPad — was mis‑set to iPad‑only)
 - [done] iOS `export_path` fixed (was pointing at an APK)
-- [done] iOS min version 14.0; Android `min_sdk=24`, `target_sdk=34` (Play 2025 requirement)
+- [done] iOS min version 14.0; Android `min_sdk=24`, `target_sdk=35` (Play 2025 requirement)
 - [done] Bundle/package ID kept as `com.codelintner.metrognomes` (matches the live Play listing — do NOT change)
 - [done] **Follows device rotation** — `window/handheld/orientation=6` (Sensor: portrait + landscape, both ways). UI re-lays out on rotation.
 
@@ -40,7 +40,7 @@ Source of truth: `assets/branding/` (regenerate with
 
 ### Android (already working for v1.0.5)
 - [done] Keystore + CI signing via `android.yml` (creds in Keychain + GitHub secrets — see `.remember`/memory)
-- [done] `version/code=4`, `version/name=1.1.0` set for this release
+- [done] `version/code=5`, `version/name=1.1.1`, `target_sdk=35` set for this release
 
 ### iOS (not yet configured — requires Apple Developer account)
 - [ ] **[you]** Apple Developer Program membership ($99/yr)
