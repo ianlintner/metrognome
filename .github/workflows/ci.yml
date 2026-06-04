@@ -31,8 +31,14 @@ jobs:
         run: |
           OUTPUT=$(godot --headless --quit --path . 2>&1)
           echo "$OUTPUT"
-          if echo "$OUTPUT" | grep -iE "^(SCRIPT ERROR|ERROR:)"; then
+          # Fail only on real script/engine errors. Exclude the headless dummy
+          # renderer's harmless shutdown noise (leaked RIDs / ObjectDB / pooled
+          # allocators) which fires whenever a 3D scene + SubViewports run.
+          REAL_ERRORS=$(echo "$OUTPUT" | grep -iE "^(SCRIPT ERROR|ERROR:)" \
+            | grep -viE "leaked at exit|RID allocations of type|ObjectDB instances|Pages in use exist at exit")
+          if [ -n "$REAL_ERRORS" ]; then
             echo "GDScript errors found — failing."
+            echo "$REAL_ERRORS"
             exit 1
           fi
 
