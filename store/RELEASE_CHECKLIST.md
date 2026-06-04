@@ -22,7 +22,7 @@ Source of truth: `assets/branding/` (regenerate with
 ## 2. App configuration — [done]
 
 - [done] Display name **"Metrognome"** (`config/name`; Android `package/name`)
-- [done] Version **1.1.1**, iOS build **7**, Android versionCode **5**
+- [done] Version **1.1.2**, iOS build **8**, Android versionCode **6**
 - [done] iOS `targeted_device_family=3` (iPhone + iPad — was mis‑set to iPad‑only)
 - [done] iOS `export_path` fixed (was pointing at an APK)
 - [done] iOS min version 14.0; Android `min_sdk=24`, `target_sdk=35` (Play 2025 requirement)
@@ -40,7 +40,7 @@ Source of truth: `assets/branding/` (regenerate with
 
 ### Android (already working for v1.0.5)
 - [done] Keystore + CI signing via `android.yml` (creds in Keychain + GitHub secrets — see `.remember`/memory)
-- [done] `version/code=5`, `version/name=1.1.1`, `target_sdk=35` set for this release
+- [done] `version/code=6`, `version/name=1.1.2`, `target_sdk=35`, native debug symbols (FULL) set for this release
 
 ### iOS (not yet configured — requires Apple Developer account)
 - [ ] **[you]** Apple Developer Program membership ($99/yr)
