@@ -49,6 +49,12 @@ jobs:
           unzip -q -o ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/android_source.zip -d android/build/
           printf '%s.%s\n' "${GODOT_VERSION}" "${GODOT_RELEASE}" > android/.build_version
           touch android/build/.gdignore
+          # Embed native debug symbols in the AAB so Play can symbolicate engine
+          # crashes/ANRs. The template defaults this to NONE and there is no
+          # export-preset knob, so patch it here (android/ is gitignored and the
+          # template is re-installed fresh each run).
+          sed -i "s|debugSymbolLevel 'NONE'|debugSymbolLevel 'FULL'|" android/build/build.gradle
+          echo "debugSymbolLevel set to:"; grep -n "debugSymbolLevel" android/build/build.gradle
 
       - name: Write release keystore from secret
         env:
