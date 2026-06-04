@@ -34,8 +34,10 @@ jobs:
           # Fail only on real script/engine errors. Exclude the headless dummy
           # renderer's harmless shutdown noise (leaked RIDs / ObjectDB / pooled
           # allocators) which fires whenever a 3D scene + SubViewports run.
+          # `|| true`: grep exits 1 on no-match, which under `set -e` (bash -e)
+          # would abort the step on the success case (all noise filtered out).
           REAL_ERRORS=$(echo "$OUTPUT" | grep -iE "^(SCRIPT ERROR|ERROR:)" \
-            | grep -viE "leaked at exit|RID allocations of type|ObjectDB instances|Pages in use exist at exit")
+            | grep -viE "leaked at exit|RID allocations of type|ObjectDB instances|Pages in use exist at exit" || true)
           if [ -n "$REAL_ERRORS" ]; then
             echo "GDScript errors found — failing."
             echo "$REAL_ERRORS"
