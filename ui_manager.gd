@@ -28,6 +28,9 @@ const TOGGLE_COLOR := Color(0.22, 0.24, 0.30)
 
 const BPM_MIN := 20
 const BPM_MAX := 300
+# Max width of the control cluster on wide screens (tablet/landscape); the bar
+# background still spans full width, but controls center within this column.
+const MAX_CONTENT_WIDTH := 1080.0
 
 # --- Always-visible bar ---
 var _bar: HBoxContainer
@@ -349,8 +352,14 @@ func _apply_responsive_layout() -> void:
 	var inset := _bottom_inset()
 	var h_pad := int(20.0 * _ui_scale)
 	var v_pad := int(14.0 * _ui_scale)
-	_margin.add_theme_constant_override("margin_left", h_pad)
-	_margin.add_theme_constant_override("margin_right", h_pad)
+	# On wide screens (tablets / landscape) the dark bar still spans the full
+	# bottom edge, but the controls are centered in a capped-width column so they
+	# don't stretch awkwardly across the whole display. On phones it fills width.
+	var side_pad := h_pad
+	if vp.x > MAX_CONTENT_WIDTH + 2 * h_pad:
+		side_pad = int((vp.x - MAX_CONTENT_WIDTH) / 2.0)
+	_margin.add_theme_constant_override("margin_left", side_pad)
+	_margin.add_theme_constant_override("margin_right", side_pad)
 	_margin.add_theme_constant_override("margin_top", v_pad)
 	_margin.add_theme_constant_override("margin_bottom", v_pad + inset)
 	_outer.add_theme_constant_override("separation", int(10.0 * _ui_scale))

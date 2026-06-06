@@ -68,6 +68,7 @@ var _gnomes: Array[GnomePulse] = []
 var _gnome_scene: PackedScene
 var _gnome_anim_players: Array[AnimationPlayer] = []  # index-aligned with _gnomes
 var _hop_anim: Animation  # arms-down hop for the active character
+var _swayers: Array[MushroomSway] = []  # dancing mushrooms pulsed on the beat
 var _hop_uses_node_bounce: bool = false  # true when the clip has no real lift
 var _active_char: int = 0  # index into CHARACTERS
 var _line_count: int = 4   # current beats-per-measure (gnome line length)
@@ -145,8 +146,14 @@ func _setup_ground() -> void:
 	ground.name = "Ground"
 	ground.mesh = ground_mesh
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.12, 0.28, 0.08)
-	mat.roughness = 0.9
+	var grass := load("res://assets/forest/grass_texture.png") as Texture2D
+	if grass != null:
+		mat.albedo_texture = grass
+		mat.uv1_scale = Vector3(8, 8, 1)  # tile across the 80x80 ground
+		mat.albedo_color = Color(0.85, 0.9, 0.8)  # gentle tint so it reads natural
+	else:
+		mat.albedo_color = Color(0.12, 0.28, 0.08)
+	mat.roughness = 1.0
 	ground.material_override = mat
 	ground.create_trimesh_collision()
 	add_child(ground)
@@ -403,137 +410,118 @@ func _orient_gnomes_to_camera() -> void:
 		model.rotate_object_local(Vector3.UP, PI)
 
 
-func _mushroom_y(path: String, y_off: float, s: float) -> float:
-	if "dancing" in path:
-		return y_off * s
-	if "mushroom.glb" in path and not "mushrooms.glb" in path:
-		return y_off + 0.6 * (s - 1.0) + 0.15 * (s - 1.0) * (s - 1.0)
-	return y_off
+const FOREST_DIR := "res://assets/forest/"
+# Meshy models are normalized to a ~2-unit bounding box centered at the origin,
+# so an item at `scale` is ~2*scale tall and rests on the ground when its center
+# is raised by `scale` (half its height).
 
 
-func _giant_mushroom_y(path: String, y_off: float, s: float) -> float:
-	if "dancing" in path:
-		return y_off * s
-	if "mushroom.glb" in path and not "mushrooms.glb" in path:
-		return y_off * s + s * 0.48
-	return y_off + s * 0.48
+func _forest_scene(name: String) -> PackedScene:
+	return load(FOREST_DIR + name + ".glb") as PackedScene
 
 
-func _mushroom_radius(path: String, s: float) -> float:
-	return s * 8.0 if "amanita" in path else s * 1.2
+func _place_forest(parent: Node3D, scene: PackedScene, x: float, z: float, s: float, dancing: bool, rng: RandomNumberGenerator) -> void:
+	if scene == null:
+		return
+	var model := scene.instantiate() as Node3D
+	model.scale = Vector3(s, s, s)
+	model.rotate_y(rng.randf_range(0.0, TAU))
+	if dancing:
+		# Sway pivots at the base (ground); model centered at +half-height.
+		var sway := MushroomSway.new()
+		sway.position = Vector3(x, 0.0, z)
+		model.position = Vector3(0.0, s, 0.0)
+		sway.add_child(model)
+		parent.add_child(sway)
+		_swayers.append(sway)
+	else:
+		model.position = Vector3(x, s, z)
+		parent.add_child(model)
 
 
 func _setup_mushrooms() -> void:
 	var forest := Node3D.new()
-	forest.name = "MushroomForest"
+	forest.name = "Forest"
 	add_child(forest)
 
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 42
 
-	var kinds: Array = [
-		["res://assets/mushrooms/mushroom.glb", 0.6, 3.6, 0.5],
-		["res://assets/mushrooms/amanita_muscaria_mushroom.glb", 0.084, 0.504, -0.5],
-		["res://assets/mushrooms/dancing_mushroom.glb", 0.6, 3.6, -0.1],
-	]
-	var loaded: Array = []
-	for k in kinds:
-		var s := load(k[0]) as PackedScene
-		if s != null:
-			loaded.append([s, k[1], k[2], k[0], k[3]])
-	if loaded.is_empty():
-		return
+	var toadstool := _forest_scene("mushroom_toadstool")
+	var tall := _forest_scene("mushroom_tall")
+	var cluster := _forest_scene("mushroom_cluster")
+	var tree := _forest_scene("forest_tree")
+	var fern := _forest_scene("fern_plant")
 
-	_occupied.append([Vector2.ZERO, 2.5])
+	# Reserve the central stage where the character line stands.
+	_occupied.append([Vector2.ZERO, 3.0])
 
-	# Main ring
-	var count := 22
-	var placed := 0
-	var attempts := 0
-	while placed < count and attempts < count * 30:
-		attempts += 1
+	# --- Bigger forest: a ring of trees as the backdrop (behind + sides) ---
+	if tree != null:
+		var placed := 0
+		var tries := 0
+		while placed < 16 and tries < 16 * 40:
+			tries += 1
+			var angle := rng.randf_range(-0.25, PI + 0.25)  # back hemisphere + sides
+			var dist := rng.randf_range(18.0, 32.0)
+			var x: float = cos(angle) * dist
+			var z: float = sin(angle) * dist
+			var s := rng.randf_range(3.5, 5.5)
+			if not _is_clear(x, z, s * 1.5):
+				continue
+			_occupied.append([Vector2(x, z), s * 1.3])
+			_place_forest(forest, tree, x, z, s, false, rng)
+			placed += 1
+
+	# --- Mushroom grove around the stage (tall + toadstool dance) ---
+	var grove: Array = [toadstool, tall, cluster]
+	var gi := 0
+	var gplaced := 0
+	var gtries := 0
+	while gplaced < 18 and gtries < 18 * 40:
+		gtries += 1
 		var angle := rng.randf_range(0.0, TAU)
-		var dist := rng.randf_range(9.0, 22.0)
+		var dist := rng.randf_range(6.0, 16.0)
 		var x: float = cos(angle) * dist
 		var z: float = sin(angle) * dist
-
-		if absf(x) < 3.5 and z < 3.0:
+		# Keep the front-center sightline to the characters clear.
+		if z < 0.0 and absf(x) < 7.0:
 			continue
-		if z < 0.0 and absf(x) < 8.0:
+		var scene: PackedScene = grove[gi % grove.size()]
+		gi += 1
+		if scene == null:
 			continue
-		if z > 0.0 and dist < 14.0:
+		var s := rng.randf_range(1.2, 2.4)
+		if not _is_clear(x, z, s * 0.9):
 			continue
+		_occupied.append([Vector2(x, z), s * 0.8])
+		var dancing := scene != cluster and rng.randf() < 0.6
+		_place_forest(forest, scene, x, z, s, dancing, rng)
+		gplaced += 1
 
-		var entry: Array = loaded[placed % loaded.size()]
-		var ms: float = rng.randf_range(float(entry[1]), float(entry[2]))
-		var path: String = entry[3]
-		var radius := _mushroom_radius(path, ms)
-		if not _is_clear(x, z, radius + 0.3):
-			continue
-
-		placed += 1
-		_occupied.append([Vector2(x, z), radius])
-
-		var mushroom := (entry[0] as PackedScene).instantiate() as Node3D
-		mushroom.position = Vector3(x, _mushroom_y(path, float(entry[4]), ms), z)
-		mushroom.scale = Vector3(ms, ms, ms)
-		mushroom.rotate_y(rng.randf_range(0.0, TAU))
-		forest.add_child(mushroom)
-		_play_first_animation(mushroom)
-
-	# Giants — back hemisphere only
-	var giant_count := 6
-	var giants_placed := 0
-	var giant_attempts := 0
-	while giants_placed < giant_count and giant_attempts < giant_count * 40:
-		giant_attempts += 1
-		var angle := rng.randf_range(0.1, PI - 0.1)
-		var dist := rng.randf_range(14.0, 26.0)
+	# --- Ground cover: ferns + small mushroom clusters ---
+	var cover: Array = [fern, cluster]
+	var ci := 0
+	var cplaced := 0
+	var ctries := 0
+	while cplaced < 16 and ctries < 16 * 40:
+		ctries += 1
+		var angle := rng.randf_range(0.0, TAU)
+		var dist := rng.randf_range(5.0, 18.0)
 		var x: float = cos(angle) * dist
 		var z: float = sin(angle) * dist
-
-		var entry: Array = loaded[rng.randi_range(0, loaded.size() - 1)]
-		var gs: float = rng.randf_range(float(entry[2]), float(entry[2]) * 3.0)
-		var path: String = entry[3]
-		var radius := _mushroom_radius(path, gs)
-		if not _is_clear(x, z, radius + 0.5):
+		if z < 0.0 and absf(x) < 6.0:
 			continue
-
-		_occupied.append([Vector2(x, z), radius])
-		var giant := (entry[0] as PackedScene).instantiate() as Node3D
-		giant.position = Vector3(x, _giant_mushroom_y(path, float(entry[4]), gs), z)
-		giant.scale = Vector3(gs, gs, gs)
-		giant.rotate_y(rng.randf_range(0.0, TAU))
-		forest.add_child(giant)
-		_play_first_animation(giant)
-		giants_placed += 1
-
-	# Horizon ring
-	var horizon_count := 18
-	var horizon_placed := 0
-	var horizon_attempts := 0
-	while horizon_placed < horizon_count and horizon_attempts < horizon_count * 30:
-		horizon_attempts += 1
-		var angle := rng.randf_range(-0.15, PI + 0.15)
-		var dist := rng.randf_range(24.0, 30.0)
-		var x: float = cos(angle) * dist
-		var z: float = sin(angle) * dist
-
-		var entry: Array = loaded[horizon_placed % loaded.size()]
-		var hs: float = rng.randf_range(float(entry[1]), float(entry[2]))
-		var path: String = entry[3]
-		var radius := _mushroom_radius(path, hs)
-		if not _is_clear(x, z, radius + 0.3):
+		var scene: PackedScene = cover[ci % cover.size()]
+		ci += 1
+		if scene == null:
 			continue
-
-		_occupied.append([Vector2(x, z), radius])
-		var distant := (entry[0] as PackedScene).instantiate() as Node3D
-		distant.position = Vector3(x, _mushroom_y(path, float(entry[4]), hs), z)
-		distant.scale = Vector3(hs, hs, hs)
-		distant.rotate_y(rng.randf_range(0.0, TAU))
-		forest.add_child(distant)
-		_play_first_animation(distant)
-		horizon_placed += 1
+		var s := rng.randf_range(0.7, 1.3)
+		if not _is_clear(x, z, s * 0.6):
+			continue
+		_occupied.append([Vector2(x, z), s * 0.5])
+		_place_forest(forest, scene, x, z, s, false, rng)
+		cplaced += 1
 
 
 func _setup_animals() -> void:
@@ -736,6 +724,8 @@ func _on_metronome_tick(beat: int, total_beats: int, is_accent: bool) -> void:
 	if beat >= 0 and beat < _gnomes.size():
 		_gnomes[beat].on_tick(is_accent)
 	_hop_gnome(beat)
+	for sway in _swayers:
+		sway.pulse()  # dancing mushrooms hop on every beat
 	_ui_manager.on_tick(beat, total_beats)
 
 

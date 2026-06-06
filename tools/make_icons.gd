@@ -51,6 +51,22 @@ func _init() -> void:
 	launch2x.resize(683, 683, Image.INTERPOLATE_LANCZOS)
 	launch2x.save_png(DIR + "ios/launch_2x.png")
 
+	# --- Play Store 512x512 icon ---
+	var store := master.duplicate() as Image
+	store.resize(512, 512, Image.INTERPOLATE_LANCZOS)
+	store.save_png(DIR + "play_icon_512.png")
+
+	# --- Play feature graphic 1024x500: gradient + gnome on the right ---
+	var feat := Image.create(1024, 500, false, Image.FORMAT_RGBA8)
+	for y in 500:
+		feat.fill_rect(Rect2i(0, y, 1024, 1), TOP.lerp(BOTTOM, float(y) / 499.0))
+	var fh := 460
+	var fw := int(fh * aspect)
+	var fgnome := gnome.duplicate() as Image
+	fgnome.resize(fw, fh, Image.INTERPOLATE_LANCZOS)
+	feat.blend_rect(fgnome, Rect2i(0, 0, fw, fh), Vector2i(1024 - fw - 80, 500 - fh - 10))
+	feat.save_png(DIR + "feature_graphic_1024x500.png")
+
 	print("icons written to ", DIR)
 	quit()
 
