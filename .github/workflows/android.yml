@@ -71,7 +71,16 @@ jobs:
           sed -i 's|gradle_build/export_format=[0-9]*|gradle_build/export_format=1|' export_presets.cfg
           sed -i 's|package/unique_name="[^"]*"|package/unique_name="com.codelintner.metrognomes"|' export_presets.cfg
           sed -i 's|package/name="[^"]*"|package/name="Metrognome"|' export_presets.cfg
-          sed -i 's|version/name="[^"]*"|version/name="1.0.5"|' export_presets.cfg
+          # Derive versionName from the release tag (refs/tags/v1.1.2 -> 1.1.2).
+          # For non-tag runs (workflow_dispatch), keep the value committed in
+          # export_presets.cfg instead of hard-coding it.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION_NAME="${GITHUB_REF#refs/tags/v}"
+            sed -i "s|version/name=\"[^\"]*\"|version/name=\"$VERSION_NAME\"|" export_presets.cfg
+            echo "versionName set from tag: $VERSION_NAME"
+          else
+            echo "versionName kept from preset: $(grep '^version/name=' export_presets.cfg)"
+          fi
 
           # Inject keystore lines after package/signed=true (substitute if present, insert if missing)
           KEYSTORE_PATH="$(pwd)/metrognome-release.keystore"
