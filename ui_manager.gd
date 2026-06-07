@@ -14,7 +14,7 @@ const TIME_SIGNATURES: Array = [
 	["2/4", 2, 4], ["3/4", 3, 4], ["4/4", 4, 4],
 	["5/4", 5, 4], ["6/8", 6, 8], ["7/8", 7, 8],
 ]
-const SOUND_NAMES: Array = ["Click", "Wood Block", "Beep"]
+const SOUND_NAMES: Array = ["Metronome", "Ribbit", "Thump", "Wood Block", "Beep"]
 const ACCENT_NAMES: Array = ["Downbeat", "1st & 3rd", "All Even", "None"]
 
 const PANEL_BG_COLOR := Color(0.08, 0.08, 0.1, 0.94)
@@ -653,6 +653,13 @@ func _on_time_sig_changed(index: int) -> void:
 
 func _on_sound_changed(index: int) -> void:
 	sound_changed.emit(index)
+
+
+# Set the sound selector to a given index without re-emitting (used when a
+# character switch changes the default sound).
+func set_sound_selection(index: int) -> void:
+	if _sound_button != null and index >= 0 and index < _sound_button.item_count:
+		_sound_button.selected = index
 
 
 func _on_accent_changed(index: int) -> void:

@@ -32,6 +32,7 @@ const CHARACTERS := [
 		"idle_clip": "Idle_3",
 		"icon": "res://assets/gnome/biped/Meshy_AI_Happy_Garden_Gnome_biped_Character_output.glb",
 		"scale": 1.6,
+		"sound": 0,  # metronome pulse
 	},
 	{
 		"id": "frog",
@@ -42,6 +43,7 @@ const CHARACTERS := [
 		"idle_clip": "Idle_3",
 		"icon": "res://assets/frog_biped/Meshy_AI_Low_poly_cartoon_frog_biped_Character_output.glb",
 		"scale": 1.6,
+		"sound": 1,  # quick ribbit
 	},
 	{
 		"id": "beaver",
@@ -53,6 +55,7 @@ const CHARACTERS := [
 		"idle_clip": "Idle_3",
 		"icon": "res://assets/beaver_biped/Meshy_AI_Low_Poly_Beaver_biped_Character_output.glb",
 		"scale": 1.6,
+		"sound": 2,  # deep wood thump
 	},
 ]
 
@@ -109,6 +112,7 @@ func _ready() -> void:
 	_setup_ui()
 	_setup_camera()
 	_populate_character_selector()
+	_apply_character_sound()  # start on the active character's signature sound
 	# Pick day or night from the device's local clock (night 7pm–7am).
 	var hour: int = Time.get_datetime_dict_from_system().hour
 	var night: bool = hour < 7 or hour >= 19
@@ -352,6 +356,17 @@ func set_active_character(index: int) -> void:
 	_active_char = index
 	_load_active_character()
 	_rebuild_gnome_line(_line_count)
+	_apply_character_sound()
+
+
+# Switch the click sound to the active character's signature sound and reflect
+# it in the sound selector.
+func _apply_character_sound() -> void:
+	var snd: int = int(CHARACTERS[_active_char].get("sound", 0))
+	if _audio_clicker != null:
+		_audio_clicker.set_sound_type(snd)
+	if _ui_manager != null:
+		_ui_manager.set_sound_selection(snd)
 
 
 func _rebuild_gnome_line(count: int) -> void:
