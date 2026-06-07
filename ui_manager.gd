@@ -8,6 +8,7 @@ signal play_toggled(playing: bool)
 signal sound_changed(sound_type: int)
 signal accent_mode_changed(mode: int)
 signal character_changed(index: int)
+signal day_night_changed(night: bool)
 
 const TIME_SIGNATURES: Array = [
 	["2/4", 2, 4], ["3/4", 3, 4], ["4/4", 4, 4],
@@ -30,7 +31,7 @@ const BPM_MIN := 20
 const BPM_MAX := 300
 # Max width of the control cluster on wide screens (tablet/landscape); the bar
 # background still spans full width, but controls center within this column.
-const MAX_CONTENT_WIDTH := 1080.0
+const MAX_CONTENT_WIDTH := 720.0
 
 # --- Always-visible bar ---
 var _bar: HBoxContainer
@@ -41,6 +42,8 @@ var _bpm_value_label: Label
 var _beat_dots_container: HBoxContainer
 var _beat_dots: Array[ColorRect] = []
 var _drawer_toggle: Button
+var _daynight_button: Button
+var _night_mode: bool = false
 
 # --- Collapsible drawer ---
 var _drawer: VBoxContainer
@@ -90,10 +93,17 @@ func _ready() -> void:
 	_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bg_panel.add_child(_margin)
 
+	# CenterContainer guarantees the control column sits horizontally centered in
+	# the bar (the column width is capped in _apply_responsive_layout). This is
+	# robust against stretch/aspect quirks that left-shifted margin-based layouts.
+	var center_box := CenterContainer.new()
+	center_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_margin.add_child(center_box)
+
 	_outer = VBoxContainer.new()
 	_outer.add_theme_constant_override("separation", 10)
 	_outer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_margin.add_child(_outer)
+	center_box.add_child(_outer)
 
 	_build_drawer()   # top (collapsible)
 	_build_bar()      # bottom (always visible)
@@ -230,6 +240,19 @@ func _build_drawer() -> void:
 	_accent_button.item_selected.connect(_on_accent_changed)
 	selectors.add_child(_accent_button)
 
+	# Scene mode (day / night) toggle — right-aligned.
+	var scene_row := HBoxContainer.new()
+	scene_row.alignment = BoxContainer.ALIGNMENT_END
+	_drawer.add_child(scene_row)
+
+	_daynight_button = Button.new()
+	_daynight_button.focus_mode = Control.FOCUS_NONE
+	_daynight_button.custom_minimum_size = Vector2(130, 0)
+	_daynight_button.tooltip_text = "Toggle day / night"
+	_daynight_button.pressed.connect(_on_daynight_pressed)
+	scene_row.add_child(_daynight_button)
+	_update_daynight_label()
+
 	# Volume row.
 	var vol_row := HBoxContainer.new()
 	vol_row.add_theme_constant_override("separation", 10)
@@ -250,6 +273,23 @@ func _build_drawer() -> void:
 	_volume_value_label = _make_label("80%")
 	_volume_value_label.add_theme_color_override("font_color", VALUE_COLOR)
 	vol_row.add_child(_volume_value_label)
+
+
+func _on_daynight_pressed() -> void:
+	_night_mode = not _night_mode
+	_update_daynight_label()
+	day_night_changed.emit(_night_mode)
+
+
+# Called by main to sync the button with the clock-derived starting mode.
+func set_day_night(night: bool) -> void:
+	_night_mode = night
+	_update_daynight_label()
+
+
+func _update_daynight_label() -> void:
+	if _daynight_button != null:
+		_daynight_button.text = "Night" if _night_mode else "Day"
 
 
 func _toggle_drawer() -> void:
@@ -297,12 +337,35 @@ func set_characters(items: Array, active: int) -> void:
 		btn.button_group = _char_group
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.tooltip_text = String(item.get("name", ""))
-		btn.text = String(item.get("name", ""))
-		btn.icon = item.get("icon")
-		btn.expand_icon = true
-		btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-		btn.add_theme_color_override("font_color", LABEL_COLOR)
+		btn.clip_contents = true
 		_style_char_button(btn)
+
+		# Card content: big icon filling the top, name caption underneath. The
+		# VBox fills the button and ignores the mouse so clicks reach the button.
+		var box := VBoxContainer.new()
+		box.add_theme_constant_override("separation", 2)
+		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 6)
+		btn.add_child(box)
+
+		var pic := TextureRect.new()
+		pic.texture = item.get("icon")
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		pic.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		pic.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		box.add_child(pic)
+
+		var lbl := Label.new()
+		lbl.text = String(item.get("name", ""))
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lbl.add_theme_color_override("font_color", LABEL_COLOR)
+		box.add_child(lbl)
+
+		btn.set_meta("pic", pic)
+		btn.set_meta("lbl", lbl)
 		if i == active:
 			btn.button_pressed = true
 		var idx := i
@@ -355,13 +418,15 @@ func _apply_responsive_layout() -> void:
 	# On wide screens (tablets / landscape) the dark bar still spans the full
 	# bottom edge, but the controls are centered in a capped-width column so they
 	# don't stretch awkwardly across the whole display. On phones it fills width.
-	var side_pad := h_pad
-	if vp.x > MAX_CONTENT_WIDTH + 2 * h_pad:
-		side_pad = int((vp.x - MAX_CONTENT_WIDTH) / 2.0)
-	_margin.add_theme_constant_override("margin_left", side_pad)
-	_margin.add_theme_constant_override("margin_right", side_pad)
+	_margin.add_theme_constant_override("margin_left", h_pad)
+	_margin.add_theme_constant_override("margin_right", h_pad)
 	_margin.add_theme_constant_override("margin_top", v_pad)
 	_margin.add_theme_constant_override("margin_bottom", v_pad + inset)
+	# Cap the column width and let the CenterContainer center it. On phones it
+	# uses (almost) the full width; on tablets/landscape it stays a tidy centered
+	# column instead of stretching edge to edge.
+	var content_w := int(minf(vp.x - 2.0 * h_pad, MAX_CONTENT_WIDTH))
+	_outer.custom_minimum_size.x = content_w
 	_outer.add_theme_constant_override("separation", int(10.0 * _ui_scale))
 	_drawer.add_theme_constant_override("separation", int(10.0 * _ui_scale))
 
@@ -407,13 +472,20 @@ func _apply_responsive_layout() -> void:
 		_style_slider(sl, grab_h)
 	_volume_value_label.custom_minimum_size = Vector2(int(54.0 * _ui_scale), 0)
 
-	var char_size := int(clampf(72.0 * _ui_scale, 60.0, 96.0))
-	var char_label := int(20.0 * _ui_scale)
+	# Character cards: portrait shape, big icon on top, name caption below.
+	var card_w := int(clampf(90.0 * _ui_scale, 78.0, 124.0))
+	var card_h := int(card_w * 1.28)
+	var clbl := int(clampf(15.0 * _ui_scale, 13.0, 19.0))
 	for cb in _char_buttons:
-		cb.custom_minimum_size = Vector2(char_size, char_size + char_label)
-		cb.add_theme_font_size_override("font_size", int(clampf(13.0 * _ui_scale, 12.0, 17.0)))
+		cb.custom_minimum_size = Vector2(card_w, card_h)
+		var lbl = cb.get_meta("lbl") if cb.has_meta("lbl") else null
+		if lbl != null:
+			(lbl as Label).add_theme_font_size_override("font_size", clbl)
+		var pic = cb.get_meta("pic") if cb.has_meta("pic") else null
+		if pic != null:
+			(pic as TextureRect).custom_minimum_size = Vector2(0, card_h - clbl - 18)
 	# ScrollContainer reports ~0 min height; pin it so the strip isn't clipped.
-	_char_scroll.custom_minimum_size = Vector2(0, char_size + char_label + int(8.0 * _ui_scale))
+	_char_scroll.custom_minimum_size = Vector2(0, card_h + int(8.0 * _ui_scale))
 
 
 func _bottom_inset() -> int:

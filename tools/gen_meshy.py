@@ -27,7 +27,7 @@ STYLE = ("cute stylized low-poly cartoon, smooth rounded shapes, vibrant "
 MODELS = {
     "mushroom_toadstool": f"a classic red toadstool mushroom with a domed red cap and white spots, white stem, {STYLE}",
     "mushroom_tall":      f"a tall whimsical mushroom with a gently curved bending stem and a colorful purple cap, playful storybook look, {STYLE}",
-    "mushroom_cluster":   f"a small cluster of three or four little tan and brown mushrooms growing from a mossy base, {STYLE}",
+    "mushroom_cluster":   f"a small cluster of three or four slender mushrooms with thin pale stems and small rounded glowing blue and teal caps, isolated mushrooms only, NO ground, NO moss, NO soil, NO dirt base, {STYLE}",
     "fern_plant":         f"a lush leafy fern plant with several curved green fronds spreading from the base, {STYLE}",
     "forest_tree":        f"a stylized cartoon forest tree with a rounded fluffy green leafy canopy and a sturdy brown trunk, whimsical storybook style, {STYLE}",
     "tree_pine":          f"a tall stylized cartoon pine conifer evergreen tree, pointed layered dark green foliage, slim brown trunk, low-poly forest game asset, {STYLE}",
@@ -72,10 +72,16 @@ def poll(ids, label):
 
 
 def main():
+    # Optional CLI filter: regenerate only the named models (default = all).
+    only = set(sys.argv[1:])
+    models = {k: v for k, v in MODELS.items() if not only or k in only}
+    if only:
+        print(f"=== Regenerating only: {', '.join(models)} ===")
+
     # Phase 1: previews
     print("=== Creating preview tasks ===")
     previews = {}
-    for name, prompt in MODELS.items():
+    for name, prompt in models.items():
         body = {"mode": "preview", "prompt": prompt, "art_style": "realistic",
                 "should_remesh": True, "ai_model": "meshy-5",
                 "topology": "triangle", "target_polycount": 18000}

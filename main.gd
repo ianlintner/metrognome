@@ -69,6 +69,14 @@ var _gnome_scene: PackedScene
 var _gnome_anim_players: Array[AnimationPlayer] = []  # index-aligned with _gnomes
 var _hop_anim: Animation  # arms-down hop for the active character
 var _swayers: Array[MushroomSway] = []  # dancing mushrooms pulsed on the beat
+
+# Enchanted-grove day/night
+var _night: bool = false
+var _env: Environment
+var _sky_mat: ProceduralSkyMaterial
+var _sun: DirectionalLight3D
+var _glow_mats: Array[StandardMaterial3D] = []  # mushroom materials that glow at night
+var _fireflies: GPUParticles3D
 var _hop_uses_node_bounce: bool = false  # true when the clip has no real lift
 var _active_char: int = 0  # index into CHARACTERS
 var _line_count: int = 4   # current beats-per-measure (gnome line length)
@@ -88,17 +96,110 @@ func _is_clear(x: float, z: float, radius: float) -> bool:
 
 
 func _ready() -> void:
+	_setup_title_splash()
 	_setup_environment()
 	_setup_lighting()
 	_setup_ground()
 	_setup_gnome()
 	_setup_mushrooms()
+	_setup_fireflies()
 	_setup_animals()
 	_setup_audio()
 	_setup_metronome()
 	_setup_ui()
 	_setup_camera()
 	_populate_character_selector()
+	# Pick day or night from the device's local clock (night 7pm–7am).
+	var hour: int = Time.get_datetime_dict_from_system().hour
+	var night: bool = hour < 7 or hour >= 19
+	_apply_time_of_day(night)
+	_ui_manager.set_day_night(night)
+
+
+const TITLE_FONT := "res://assets/fonts/LuckiestGuy-Regular.ttf"
+
+
+# Branded title / loading splash shown over the scene for a couple of seconds,
+# then fades out. Purely cosmetic — the game loads behind it.
+func _setup_title_splash() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "TitleSplash"
+	layer.layer = 100  # above the UI
+	add_child(layer)
+
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP  # swallow taps during splash
+	layer.add_child(root)
+
+	# Deep indigo -> teal gradient backdrop (matches the enchanted-night mood).
+	var grad := Gradient.new()
+	grad.set_color(0, Color(0.05, 0.06, 0.15))
+	grad.set_color(1, Color(0.09, 0.20, 0.24))
+	var gtex := GradientTexture2D.new()
+	gtex.gradient = grad
+	gtex.fill_from = Vector2(0, 0)
+	gtex.fill_to = Vector2(0, 1)
+	gtex.width = 16
+	gtex.height = 256
+	var bg := TextureRect.new()
+	bg.texture = gtex
+	bg.stretch_mode = TextureRect.STRETCH_SCALE
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(bg)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(center)
+
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 10)
+	center.add_child(col)
+
+	# Branding: the gnome mascot cutout.
+	var mascot := load("res://assets/branding/gnome_cutout.png") as Texture2D
+	if mascot != null:
+		var pic := TextureRect.new()
+		pic.texture = mascot
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		pic.custom_minimum_size = Vector2(300, 320)
+		pic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		col.add_child(pic)
+
+	# Stylized title.
+	var title := Label.new()
+	title.text = "Metrognomes"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var ls := LabelSettings.new()
+	ls.font = load(TITLE_FONT)
+	ls.font_size = 104
+	ls.font_color = Color(1.0, 0.86, 0.34)
+	ls.outline_size = 16
+	ls.outline_color = Color(0.16, 0.08, 0.02)
+	ls.shadow_size = 6
+	ls.shadow_color = Color(0, 0, 0, 0.45)
+	ls.shadow_offset = Vector2(0, 6)
+	title.label_settings = ls
+	col.add_child(title)
+
+	# Tagline.
+	var tag := Label.new()
+	tag.text = "tap · hop · keep time"
+	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var tls := LabelSettings.new()
+	tls.font = load(TITLE_FONT)
+	tls.font_size = 30
+	tls.font_color = Color(0.75, 0.88, 0.85)
+	tag.label_settings = tls
+	col.add_child(tag)
+
+	# Hold for a beat, then fade out and remove.
+	var tw := create_tween()
+	tw.tween_interval(2.2)
+	tw.tween_property(root, "modulate:a", 0.0, 0.7)
+	tw.tween_callback(layer.queue_free)
 
 
 func _setup_environment() -> void:
@@ -106,34 +207,39 @@ func _setup_environment() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_color = Color(0.5, 0.55, 0.4)
-	env.ambient_light_energy = 0.7
 
 	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.35, 0.55, 0.85)
-	sky_mat.sky_horizon_color = Color(0.6, 0.7, 0.75)
-	sky_mat.ground_horizon_color = Color(0.25, 0.35, 0.15)
-	sky_mat.ground_bottom_color = Color(0.1, 0.2, 0.05)
-
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	env.sky = sky
 
-	env.ssao_enabled = true
-	env.ssil_enabled = true
-
-	# Atmospheric depth fog — fades the far treeline into a green haze and masks
-	# the skybox horizon, so it reads as a clearing deep inside a forest.
+	# Atmospheric depth fog — fades the far treeline into haze and masks the
+	# skybox horizon, so it reads as a clearing deep inside a forest. (Tint and
+	# distance are retuned per time-of-day in _apply_time_of_day.)
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_DEPTH
-	env.fog_light_color = Color(0.55, 0.68, 0.55)
-	env.fog_light_energy = 1.0
 	env.fog_sky_affect = 0.5
 	env.fog_depth_begin = 22.0
 	env.fog_depth_end = 70.0
 	env.fog_depth_curve = 0.7
 
+	# Soft bloom so emissive mushrooms/fireflies glow. Works on the
+	# gl_compatibility mobile renderer (Godot 4.3+). Tasteful, not blown out.
+	env.glow_enabled = true
+	env.glow_intensity = 0.5
+	env.glow_strength = 1.0
+	env.glow_bloom = 0.1
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	env.glow_hdr_threshold = 1.0
+
+	# Filmic tonemap + a gentle saturation lift for the dreamy storybook look.
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 1.15
+
 	world_env.environment = env
+	_env = env
+	_sky_mat = sky_mat
 	add_child(world_env)
 
 
@@ -141,13 +247,62 @@ func _setup_lighting() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
 	sun.rotation_degrees = Vector3(-50, 30, 0)
-	sun.light_energy = 1.8
-	sun.light_color = Color(1, 0.95, 0.85)
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.directional_shadow_split_1 = 0.1
 	sun.directional_shadow_split_2 = 0.3
 	add_child(sun)
+	_sun = sun
+
+
+# === Enchanted-grove day/night ===============================================
+# Two hand-tuned palettes. Tweak these to taste — they're the whole mood of the
+# scene. Day = warm sun-dappled clearing; Night = cool magical glow.
+func _apply_time_of_day(night: bool) -> void:
+	_night = night
+	if _env == null or _sky_mat == null or _sun == null:
+		return
+
+	if night:
+		_sky_mat.sky_top_color = Color(0.04, 0.05, 0.14)
+		_sky_mat.sky_horizon_color = Color(0.10, 0.16, 0.26)
+		_sky_mat.ground_horizon_color = Color(0.06, 0.10, 0.12)
+		_sky_mat.ground_bottom_color = Color(0.02, 0.04, 0.05)
+		_env.ambient_light_color = Color(0.20, 0.28, 0.42)
+		_env.ambient_light_energy = 0.45
+		_env.fog_light_color = Color(0.14, 0.22, 0.30)  # cool teal haze
+		_env.fog_light_energy = 0.8
+		_env.glow_intensity = 0.9                       # glows pop in the dark
+		_sun.light_energy = 0.35                         # dim "moonlight"
+		_sun.light_color = Color(0.55, 0.68, 0.95)
+	else:
+		_sky_mat.sky_top_color = Color(0.35, 0.55, 0.85)
+		_sky_mat.sky_horizon_color = Color(0.6, 0.7, 0.75)
+		_sky_mat.ground_horizon_color = Color(0.25, 0.35, 0.15)
+		_sky_mat.ground_bottom_color = Color(0.1, 0.2, 0.05)
+		_env.ambient_light_color = Color(0.5, 0.55, 0.4)
+		_env.ambient_light_energy = 0.7
+		_env.fog_light_color = Color(0.55, 0.68, 0.55)  # green haze
+		_env.fog_light_energy = 1.0
+		_env.glow_intensity = 0.4
+		_sun.light_energy = 1.8
+		_sun.light_color = Color(1, 0.95, 0.85)
+
+	# Mushroom caps self-illuminate: faint by day, vivid by night.
+	var glow := 1.3 if night else 0.12
+	for m in _glow_mats:
+		m.emission_energy_multiplier = glow
+
+	# Fireflies: barely any by day, a gentle scatter by night.
+	if _fireflies != null:
+		_fireflies.amount_ratio = 0.7 if night else 0.15
+		var fm := _fireflies.draw_pass_1.surface_get_material(0) if _fireflies.draw_pass_1 else null
+		if fm is StandardMaterial3D:
+			(fm as StandardMaterial3D).emission_energy_multiplier = 3.0 if night else 1.2
+
+
+func _toggle_day_night() -> void:
+	_apply_time_of_day(not _night)
 
 
 func _setup_ground() -> void:
@@ -431,12 +586,14 @@ func _forest_scene(name: String) -> PackedScene:
 	return load(FOREST_DIR + name + ".glb") as PackedScene
 
 
-func _place_forest(parent: Node3D, scene: PackedScene, x: float, z: float, s: float, dancing: bool, rng: RandomNumberGenerator) -> void:
+func _place_forest(parent: Node3D, scene: PackedScene, x: float, z: float, s: float, dancing: bool, rng: RandomNumberGenerator, glow: bool = false) -> void:
 	if scene == null:
 		return
 	var model := scene.instantiate() as Node3D
 	model.scale = Vector3(s, s, s)
 	model.rotate_y(rng.randf_range(0.0, TAU))
+	if glow:
+		_make_glow(model)
 	if dancing:
 		# Sway pivots at the base (ground); model centered at +half-height.
 		var sway := MushroomSway.new()
@@ -448,6 +605,40 @@ func _place_forest(parent: Node3D, scene: PackedScene, x: float, z: float, s: fl
 	else:
 		model.position = Vector3(x, s, z)
 		parent.add_child(model)
+
+
+# Make a mushroom self-illuminate using its own albedo as the emission map, so
+# the cap glows in its natural colors. Collected materials get their emission
+# energy driven by _apply_time_of_day (faint by day, vivid by night).
+func _make_glow(model: Node3D) -> void:
+	for mi in _all_mesh_instances(model):
+		var count := mi.mesh.get_surface_count() if mi.mesh != null else 0
+		for si in count:
+			var src := mi.get_active_material(si)
+			if src is StandardMaterial3D:
+				var m := (src as StandardMaterial3D).duplicate() as StandardMaterial3D
+				m.emission_enabled = true
+				if m.albedo_texture != null:
+					# MULTIPLY so the glow is tinted by the cap's own texture
+					# instead of ADD-ing flat white over everything (which blows
+					# the whole mushroom out to pure white).
+					m.emission_texture = m.albedo_texture
+					m.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+					m.emission = Color(1, 1, 1)
+				else:
+					m.emission = m.albedo_color
+				m.emission_energy_multiplier = 0.12
+				mi.set_surface_override_material(si, m)
+				_glow_mats.append(m)
+
+
+func _all_mesh_instances(node: Node) -> Array[MeshInstance3D]:
+	var out: Array[MeshInstance3D] = []
+	if node is MeshInstance3D:
+		out.append(node)
+	for child in node.get_children():
+		out.append_array(_all_mesh_instances(child))
+	return out
 
 
 func _setup_mushrooms() -> void:
@@ -478,33 +669,37 @@ func _setup_mushrooms() -> void:
 	if not trees.is_empty():
 		var placed := 0
 		var tries := 0
-		while placed < 14 and tries < 14 * 50:
+		while placed < 18 and tries < 18 * 50:
 			tries += 1
 			var angle := rng.randf_range(-0.3, PI + 0.3)  # back hemisphere + sides
 			var dist := rng.randf_range(16.0, 30.0)
 			var x: float = cos(angle) * dist
 			var z: float = sin(angle) * dist
-			var s := rng.randf_range(3.5, 5.5)
+			var s := rng.randf_range(6.0, 9.0)
 			if not _is_clear(x, z, s * 1.4):
 				continue
 			_occupied.append([Vector2(x, z), s * 1.2])
 			_place_forest(forest, trees[rng.randi() % trees.size()], x, z, s, false, rng)
 			placed += 1
 
-		# --- Dense background treeline: a wall of trees masking the skybox ---
-		var wall := 44
+		# --- Dense background forest: many overlapping trees, several rows deep,
+		# fading into the fog so it reads as real woods surrounding the clearing.
+		var wall := 130
 		var wtries := 0
 		var wplaced := 0
-		while wplaced < wall and wtries < wall * 30:
+		while wplaced < wall and wtries < wall * 40:
 			wtries += 1
 			var angle := rng.randf_range(0.0, TAU)
-			var dist := rng.randf_range(34.0, 60.0)
+			var dist := rng.randf_range(30.0, 80.0)
 			var x: float = cos(angle) * dist
 			var z: float = sin(angle) * dist
-			var s := rng.randf_range(5.0, 8.0)  # large, fade into fog
-			if not _is_clear(x, z, s * 1.0):
+			var s := rng.randf_range(9.0, 16.0)  # towering, fade into fog
+			# Allow canopies to overlap (real forests are dense), with looser
+			# spacing the farther out we go.
+			var pack: float = lerpf(0.45, 0.3, clampf((dist - 30.0) / 50.0, 0.0, 1.0))
+			if not _is_clear(x, z, s * pack):
 				continue
-			_occupied.append([Vector2(x, z), s * 0.9])
+			_occupied.append([Vector2(x, z), s * pack])
 			_place_forest(forest, trees[rng.randi() % trees.size()], x, z, s, false, rng)
 			wplaced += 1
 
@@ -525,19 +720,19 @@ func _setup_mushrooms() -> void:
 				_place_forest(forest, bush, x, z, s, false, rng)
 				bplaced += 1
 
-	# --- Mushroom grove around the stage (tall + toadstool dance) ---
+	# --- Mushroom grove: a sparse ring set back from the characters ---
 	var grove: Array = [toadstool, tall, cluster]
 	var gi := 0
 	var gplaced := 0
 	var gtries := 0
-	while gplaced < 18 and gtries < 18 * 40:
+	while gplaced < 9 and gtries < 9 * 40:
 		gtries += 1
 		var angle := rng.randf_range(0.0, TAU)
-		var dist := rng.randf_range(6.0, 16.0)
+		var dist := rng.randf_range(10.0, 19.0)  # pushed out so the stage stays clear
 		var x: float = cos(angle) * dist
 		var z: float = sin(angle) * dist
 		# Keep the front-center sightline to the characters clear.
-		if z < 0.0 and absf(x) < 7.0:
+		if z < 0.0 and absf(x) < 8.0:
 			continue
 		var scene: PackedScene = grove[gi % grove.size()]
 		gi += 1
@@ -548,7 +743,7 @@ func _setup_mushrooms() -> void:
 			continue
 		_occupied.append([Vector2(x, z), s * 0.8])
 		var dancing := scene != cluster and rng.randf() < 0.6
-		_place_forest(forest, scene, x, z, s, dancing, rng)
+		_place_forest(forest, scene, x, z, s, dancing, rng, true)
 		gplaced += 1
 
 	# --- Ground cover: ferns + small mushroom clusters ---
@@ -556,13 +751,13 @@ func _setup_mushrooms() -> void:
 	var ci := 0
 	var cplaced := 0
 	var ctries := 0
-	while cplaced < 16 and ctries < 16 * 40:
+	while cplaced < 9 and ctries < 9 * 40:
 		ctries += 1
 		var angle := rng.randf_range(0.0, TAU)
-		var dist := rng.randf_range(5.0, 18.0)
+		var dist := rng.randf_range(9.0, 18.0)
 		var x: float = cos(angle) * dist
 		var z: float = sin(angle) * dist
-		if z < 0.0 and absf(x) < 6.0:
+		if z < 0.0 and absf(x) < 7.0:
 			continue
 		var scene: PackedScene = cover[ci % cover.size()]
 		ci += 1
@@ -572,8 +767,77 @@ func _setup_mushrooms() -> void:
 		if not _is_clear(x, z, s * 0.6):
 			continue
 		_occupied.append([Vector2(x, z), s * 0.5])
-		_place_forest(forest, scene, x, z, s, false, rng)
+		_place_forest(forest, scene, x, z, s, false, rng, scene == cluster)
 		cplaced += 1
+
+
+# Floating glowing motes drifting over the grove — fireflies/spores. Sparse by
+# day, a swarm by night (driven via amount_ratio in _apply_time_of_day).
+func _setup_fireflies() -> void:
+	var p := GPUParticles3D.new()
+	p.name = "Fireflies"
+	p.amount = 40
+	p.lifetime = 7.0
+	p.preprocess = 4.0
+	p.speed_scale = 0.0  # frozen until the metronome plays (scene "comes alive")
+	p.position = Vector3(0.0, 2.5, 0.0)
+	p.visibility_aabb = AABB(Vector3(-22, -2, -22), Vector3(44, 12, 44))
+
+	var proc := ParticleProcessMaterial.new()
+	proc.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	proc.emission_box_extents = Vector3(20.0, 4.0, 16.0)
+	proc.direction = Vector3(0, 1, 0)
+	proc.spread = 80.0
+	proc.gravity = Vector3.ZERO
+	proc.initial_velocity_min = 0.1
+	proc.initial_velocity_max = 0.55
+	proc.damping_min = 0.1
+	proc.damping_max = 0.4
+	proc.scale_min = 0.5
+	proc.scale_max = 1.4
+	# Fade in and out over each particle's life so motes twinkle rather than pop.
+	var fade := CurveTexture.new()
+	var curve := Curve.new()
+	curve.add_point(Vector2(0.0, 0.0))
+	curve.add_point(Vector2(0.3, 1.0))
+	curve.add_point(Vector2(0.7, 1.0))
+	curve.add_point(Vector2(1.0, 0.0))
+	fade.curve = curve
+	proc.alpha_curve = fade
+	p.process_material = proc
+
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.2, 0.2)
+	var dot := _soft_dot()
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.albedo_texture = dot
+	m.emission_enabled = true
+	m.emission = Color(1.0, 0.92, 0.55)  # warm firefly gold
+	m.emission_texture = dot
+	m.emission_energy_multiplier = 1.5
+	quad.material = m
+	p.draw_pass_1 = quad
+
+	add_child(p)
+	_fireflies = p
+
+
+func _soft_dot() -> GradientTexture2D:
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.set_color(1, Color(1, 1, 1, 0))
+	var t := GradientTexture2D.new()
+	t.gradient = g
+	t.width = 64
+	t.height = 64
+	t.fill = GradientTexture2D.FILL_RADIAL
+	t.fill_from = Vector2(0.5, 0.5)
+	t.fill_to = Vector2(0.5, 0.0)
+	return t
 
 
 func _setup_animals() -> void:
@@ -731,6 +995,7 @@ func _setup_ui() -> void:
 	_ui_manager.accent_mode_changed.connect(_on_ui_accent_mode_changed)
 	_ui_manager.play_toggled.connect(_on_ui_play_toggled)
 	_ui_manager.character_changed.connect(set_active_character)
+	_ui_manager.day_night_changed.connect(_apply_time_of_day)
 	_metronome.tick.connect(_on_metronome_tick)
 
 
@@ -766,9 +1031,11 @@ func _on_ui_play_toggled(playing: bool) -> void:
 			ap.play()
 		else:
 			ap.pause()
-	# Dancing mushrooms only animate while playing; frozen otherwise.
+	# Scene comes alive on play: mushrooms sway, fireflies drift + twinkle.
 	for sway in _swayers:
 		sway.set_playing(playing)
+	if _fireflies != null:
+		_fireflies.speed_scale = 1.0 if playing else 0.0
 
 
 func _on_metronome_tick(beat: int, total_beats: int, is_accent: bool) -> void:
@@ -779,8 +1046,6 @@ func _on_metronome_tick(beat: int, total_beats: int, is_accent: bool) -> void:
 	if beat >= 0 and beat < _gnomes.size():
 		_gnomes[beat].on_tick(is_accent)
 	_hop_gnome(beat)
-	for sway in _swayers:
-		sway.pulse()  # dancing mushrooms hop on every beat
 	_ui_manager.on_tick(beat, total_beats)
 
 
