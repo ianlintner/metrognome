@@ -30,7 +30,7 @@ window/handheld/orientation=6
 
 [audio]
 
-general/ios/session_category="Playback"
+general/ios/session_category=3
 
 [dotnet]
 
