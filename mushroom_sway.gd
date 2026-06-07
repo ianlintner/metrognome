@@ -20,6 +20,12 @@ var _beat: float = 0.0  # decays 1 -> 0 after each beat pulse
 func _ready() -> void:
 	_phase = randf() * TAU
 	_base_y = position.y
+	set_process(false)  # start paused — only dances while the metronome plays
+
+
+# Dance only while the metronome is playing; freeze in place when paused.
+func set_playing(p: bool) -> void:
+	set_process(p)
 
 
 # Called from the metronome tick to make the mushroom hop on the beat.

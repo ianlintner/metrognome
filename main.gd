@@ -766,6 +766,9 @@ func _on_ui_play_toggled(playing: bool) -> void:
 			ap.play()
 		else:
 			ap.pause()
+	# Dancing mushrooms only animate while playing; frozen otherwise.
+	for sway in _swayers:
+		sway.set_playing(playing)
 
 
 func _on_metronome_tick(beat: int, total_beats: int, is_accent: bool) -> void:
