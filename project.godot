@@ -14,9 +14,9 @@ config/name="Metrognome"
 config/version="1.2.0"
 run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
-boot_splash/bg_color=Color(0.3, 0.52, 0.78, 1)
-boot_splash/stretch_mode=0
-boot_splash/image="res://assets/branding/splash_logo.png"
+boot_splash/bg_color=Color(0.05, 0.06, 0.15, 1)
+boot_splash/show_image=false
+boot_splash/image=""
 config/icon="res://assets/branding/icon_1024.png"
 
 [display]
@@ -27,6 +27,10 @@ window/size/mode=3
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=6
+
+[audio]
+
+general/ios/session_category="Playback"
 
 [dotnet]
 

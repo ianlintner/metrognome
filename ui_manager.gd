@@ -44,6 +44,8 @@ var _beat_dots: Array[ColorRect] = []
 var _drawer_toggle: Button
 var _daynight_button: Button
 var _night_mode: bool = false
+var _sun_icon: ImageTexture
+var _moon_icon: ImageTexture
 
 # --- Collapsible drawer ---
 var _drawer: VBoxContainer
@@ -240,14 +242,18 @@ func _build_drawer() -> void:
 	_accent_button.item_selected.connect(_on_accent_changed)
 	selectors.add_child(_accent_button)
 
-	# Scene mode (day / night) toggle — right-aligned.
+	# Scene mode (day / night) toggle — a prominent icon button, centered.
+	_sun_icon = _make_sun_icon()
+	_moon_icon = _make_moon_icon()
+
 	var scene_row := HBoxContainer.new()
-	scene_row.alignment = BoxContainer.ALIGNMENT_END
+	scene_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	_drawer.add_child(scene_row)
 
 	_daynight_button = Button.new()
 	_daynight_button.focus_mode = Control.FOCUS_NONE
-	_daynight_button.custom_minimum_size = Vector2(130, 0)
+	_daynight_button.expand_icon = true
+	_daynight_button.add_theme_constant_override("h_separation", 10)
 	_daynight_button.tooltip_text = "Toggle day / night"
 	_daynight_button.pressed.connect(_on_daynight_pressed)
 	scene_row.add_child(_daynight_button)
@@ -288,8 +294,58 @@ func set_day_night(night: bool) -> void:
 
 
 func _update_daynight_label() -> void:
-	if _daynight_button != null:
-		_daynight_button.text = "Night" if _night_mode else "Day"
+	if _daynight_button == null:
+		return
+	if _night_mode:
+		_daynight_button.text = "Night"
+		_daynight_button.icon = _moon_icon
+	else:
+		_daynight_button.text = "Day"
+		_daynight_button.icon = _sun_icon
+
+
+# Procedurally drawn sun icon (gold disc + 8 rays) so we don't depend on emoji
+# fonts that aren't bundled on iOS.
+func _make_sun_icon() -> ImageTexture:
+	var s := 96
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var c := Vector2(s / 2.0, s / 2.0)
+	var core := s * 0.24
+	var ray_in := s * 0.30
+	var ray_out := s * 0.47
+	var gold := Color(1.0, 0.82, 0.28)
+	for y in s:
+		for x in s:
+			var p := Vector2(x + 0.5, y + 0.5)
+			var d := p.distance_to(c)
+			var lit := false
+			if d <= core:
+				lit = true
+			elif d >= ray_in and d <= ray_out:
+				var seg: float = fposmod((p - c).angle(), PI / 4.0)
+				if seg < 0.20 or seg > (PI / 4.0 - 0.20):
+					lit = true
+			if lit:
+				img.set_pixel(x, y, gold)
+	return ImageTexture.create_from_image(img)
+
+
+# Crescent moon = pale disc with an offset disc subtracted.
+func _make_moon_icon() -> ImageTexture:
+	var s := 96
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var r := s * 0.36
+	var c1 := Vector2(s * 0.46, s * 0.52)
+	var c2 := Vector2(s * 0.64, s * 0.40)
+	var pale := Color(0.95, 0.95, 0.82)
+	for y in s:
+		for x in s:
+			var p := Vector2(x + 0.5, y + 0.5)
+			if p.distance_to(c1) <= r and p.distance_to(c2) > r * 1.04:
+				img.set_pixel(x, y, pale)
+	return ImageTexture.create_from_image(img)
 
 
 func _toggle_drawer() -> void:
@@ -421,7 +477,10 @@ func _apply_responsive_layout() -> void:
 	_margin.add_theme_constant_override("margin_left", h_pad)
 	_margin.add_theme_constant_override("margin_right", h_pad)
 	_margin.add_theme_constant_override("margin_top", v_pad)
-	_margin.add_theme_constant_override("margin_bottom", v_pad + inset)
+	# Lift the bar clear of the curved bottom / home indicator: honor the safe-area
+	# inset (with a sensible floor in case iOS under-reports) plus extra breathing room.
+	var bottom_gap := v_pad + maxi(inset, int(20.0 * _ui_scale)) + int(16.0 * _ui_scale)
+	_margin.add_theme_constant_override("margin_bottom", bottom_gap)
 	# Cap the column width and let the CenterContainer center it. On phones it
 	# uses (almost) the full width; on tablets/landscape it stays a tidy centered
 	# column instead of stretching edge to edge.
@@ -486,6 +545,12 @@ func _apply_responsive_layout() -> void:
 			(pic as TextureRect).custom_minimum_size = Vector2(0, card_h - clbl - 18)
 	# ScrollContainer reports ~0 min height; pin it so the strip isn't clipped.
 	_char_scroll.custom_minimum_size = Vector2(0, card_h + int(8.0 * _ui_scale))
+
+	# Day/night toggle — large, tappable icon button.
+	if _daynight_button != null:
+		var dn_h := int(clampf(60.0 * _ui_scale, 54.0, 78.0))
+		_daynight_button.custom_minimum_size = Vector2(int(190.0 * _ui_scale), dn_h)
+		_daynight_button.add_theme_font_size_override("font_size", int(clampf(20.0 * _ui_scale, 17.0, 26.0)))
 
 
 func _bottom_inset() -> int:
