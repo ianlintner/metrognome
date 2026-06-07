@@ -63,6 +63,9 @@ var _metronome: Metronome
 var _audio_clicker: AudioClicker
 var _ui_manager: UIManager
 var _camera: Camera3D
+const CAM_TARGET := Vector3(0, 1.4, 0)
+var _cam_dir := Vector3(0, 3.6, -14).normalized()  # fixed view direction (set in _setup_camera)
+var _cam_base_dist := 14.46                          # baseline distance; never zoom closer
 
 var _occupied: Array = []  # of [Vector2, float]
 var _anim_players: Array[AnimationPlayer] = []
@@ -416,7 +419,7 @@ func _rebuild_gnome_line(count: int) -> void:
 
 		_gnomes.append(pulse)
 
-	_orient_gnomes_to_camera()
+	_frame_camera()  # re-fit the camera to the new line width (orients gnomes too)
 	_sync_gnome_anim_to_bpm()
 
 
@@ -1108,5 +1111,29 @@ func _setup_camera() -> void:
 	_camera.fov = 70
 	add_child(_camera)
 	_camera.position = Vector3(0, 5.0, -14)
-	_camera.look_at(Vector3(0, 1.4, 0))
+	_camera.look_at(CAM_TARGET)
+	# Baseline framing (the look at 4/4): keep the view direction fixed and only
+	# ever pull the camera *back* from here to fit wider lines / narrow screens.
+	_cam_dir = (_camera.position - CAM_TARGET).normalized()
+	_cam_base_dist = _camera.position.distance_to(CAM_TARGET)
+	get_viewport().size_changed.connect(_frame_camera)
+	_frame_camera()
+
+
+# Zoom-to-fit: pull the camera back along its fixed direction so the whole
+# character line is framed with margins, accounting for the viewport aspect
+# (horizontal FOV shrinks on portrait screens). Never closer than the baseline.
+func _frame_camera() -> void:
+	if _camera == null:
+		return
+	var vp := get_viewport().get_visible_rect().size
+	var aspect: float = vp.x / maxf(vp.y, 1.0)
+	var v_half := tan(deg_to_rad(_camera.fov) * 0.5)  # vertical half-angle (KEEP_HEIGHT)
+	var h_half: float = maxf(v_half * aspect, 0.001)  # horizontal half-angle
+	var line_half_w := float(maxi(_line_count - 1, 0)) * GNOME_SPACING * 0.5 + 1.7  # + body/margin
+	var need_w := line_half_w / h_half
+	var need_h := 2.7 / v_half  # keep characters + a little headroom vertically
+	var dist: float = maxf(maxf(need_w, need_h), _cam_base_dist)
+	_camera.position = CAM_TARGET + _cam_dir * dist
+	_camera.look_at(CAM_TARGET)
 	_orient_gnomes_to_camera()
