@@ -22,12 +22,17 @@ STYLE = ("cute stylized low-poly cartoon, smooth rounded shapes, vibrant "
          "saturated colors, clean topology, mobile game asset, single object, "
          "neutral pose, centered, plain background")
 
+# Full manifest of forest props (delete a GLB and re-run to regenerate just it;
+# existing files are overwritten by name).
 MODELS = {
     "mushroom_toadstool": f"a classic red toadstool mushroom with a domed red cap and white spots, white stem, {STYLE}",
     "mushroom_tall":      f"a tall whimsical mushroom with a gently curved bending stem and a colorful purple cap, playful storybook look, {STYLE}",
     "mushroom_cluster":   f"a small cluster of three or four little tan and brown mushrooms growing from a mossy base, {STYLE}",
-    "forest_tree":        f"a stylized cartoon forest tree with a rounded fluffy green leafy canopy and a sturdy brown trunk, whimsical storybook style, {STYLE}",
     "fern_plant":         f"a lush leafy fern plant with several curved green fronds spreading from the base, {STYLE}",
+    "forest_tree":        f"a stylized cartoon forest tree with a rounded fluffy green leafy canopy and a sturdy brown trunk, whimsical storybook style, {STYLE}",
+    "tree_pine":          f"a tall stylized cartoon pine conifer evergreen tree, pointed layered dark green foliage, slim brown trunk, low-poly forest game asset, {STYLE}",
+    "tree_round":         f"a big tall stylized cartoon oak tree with a huge dense rounded green canopy and a thick brown trunk, lush full foliage, forest game asset, {STYLE}",
+    "bush_shrub":         f"a rounded leafy green bush shrub, dense small leaves, low-poly cartoon forest undergrowth game asset, {STYLE}",
 }
 
 

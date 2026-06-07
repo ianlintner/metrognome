@@ -122,6 +122,17 @@ func _setup_environment() -> void:
 	env.ssao_enabled = true
 	env.ssil_enabled = true
 
+	# Atmospheric depth fog — fades the far treeline into a green haze and masks
+	# the skybox horizon, so it reads as a clearing deep inside a forest.
+	env.fog_enabled = true
+	env.fog_mode = Environment.FOG_MODE_DEPTH
+	env.fog_light_color = Color(0.55, 0.68, 0.55)
+	env.fog_light_energy = 1.0
+	env.fog_sky_affect = 0.5
+	env.fog_depth_begin = 22.0
+	env.fog_depth_end = 70.0
+	env.fog_depth_curve = 0.7
+
 	world_env.environment = env
 	add_child(world_env)
 
@@ -141,7 +152,7 @@ func _setup_lighting() -> void:
 
 func _setup_ground() -> void:
 	var ground_mesh := PlaneMesh.new()
-	ground_mesh.size = Vector2(80, 80)
+	ground_mesh.size = Vector2(170, 170)  # extends under the far treeline
 	var ground := MeshInstance3D.new()
 	ground.name = "Ground"
 	ground.mesh = ground_mesh
@@ -149,8 +160,8 @@ func _setup_ground() -> void:
 	var grass := load("res://assets/forest/grass_texture.png") as Texture2D
 	if grass != null:
 		mat.albedo_texture = grass
-		mat.uv1_scale = Vector3(8, 8, 1)  # tile across the 80x80 ground
-		mat.albedo_color = Color(0.85, 0.9, 0.8)  # gentle tint so it reads natural
+		mat.uv1_scale = Vector3(26, 26, 1)  # ~6.5 units per tile across the ground
+		mat.albedo_color = Color(0.95, 1.0, 0.92)
 	else:
 		mat.albedo_color = Color(0.12, 0.28, 0.08)
 	mat.roughness = 1.0
@@ -450,28 +461,69 @@ func _setup_mushrooms() -> void:
 	var toadstool := _forest_scene("mushroom_toadstool")
 	var tall := _forest_scene("mushroom_tall")
 	var cluster := _forest_scene("mushroom_cluster")
-	var tree := _forest_scene("forest_tree")
 	var fern := _forest_scene("fern_plant")
+
+	# Tree pool — variants are included automatically once generated/imported.
+	var trees: Array = []
+	for n in ["forest_tree", "tree_round", "tree_pine"]:
+		var t := _forest_scene(n)
+		if t != null:
+			trees.append(t)
+	var bush := _forest_scene("bush_shrub")
 
 	# Reserve the central stage where the character line stands.
 	_occupied.append([Vector2.ZERO, 3.0])
 
-	# --- Bigger forest: a ring of trees as the backdrop (behind + sides) ---
-	if tree != null:
+	# --- Mid trees: a ring framing the grove (behind + sides) ---
+	if not trees.is_empty():
 		var placed := 0
 		var tries := 0
-		while placed < 16 and tries < 16 * 40:
+		while placed < 14 and tries < 14 * 50:
 			tries += 1
-			var angle := rng.randf_range(-0.25, PI + 0.25)  # back hemisphere + sides
-			var dist := rng.randf_range(18.0, 32.0)
+			var angle := rng.randf_range(-0.3, PI + 0.3)  # back hemisphere + sides
+			var dist := rng.randf_range(16.0, 30.0)
 			var x: float = cos(angle) * dist
 			var z: float = sin(angle) * dist
 			var s := rng.randf_range(3.5, 5.5)
-			if not _is_clear(x, z, s * 1.5):
+			if not _is_clear(x, z, s * 1.4):
 				continue
-			_occupied.append([Vector2(x, z), s * 1.3])
-			_place_forest(forest, tree, x, z, s, false, rng)
+			_occupied.append([Vector2(x, z), s * 1.2])
+			_place_forest(forest, trees[rng.randi() % trees.size()], x, z, s, false, rng)
 			placed += 1
+
+		# --- Dense background treeline: a wall of trees masking the skybox ---
+		var wall := 44
+		var wtries := 0
+		var wplaced := 0
+		while wplaced < wall and wtries < wall * 30:
+			wtries += 1
+			var angle := rng.randf_range(0.0, TAU)
+			var dist := rng.randf_range(34.0, 60.0)
+			var x: float = cos(angle) * dist
+			var z: float = sin(angle) * dist
+			var s := rng.randf_range(5.0, 8.0)  # large, fade into fog
+			if not _is_clear(x, z, s * 1.0):
+				continue
+			_occupied.append([Vector2(x, z), s * 0.9])
+			_place_forest(forest, trees[rng.randi() % trees.size()], x, z, s, false, rng)
+			wplaced += 1
+
+		# --- Bushes filling the treeline base ---
+		if bush != null:
+			var bplaced := 0
+			var btries := 0
+			while bplaced < 24 and btries < 24 * 30:
+				btries += 1
+				var angle := rng.randf_range(0.0, TAU)
+				var dist := rng.randf_range(28.0, 56.0)
+				var x: float = cos(angle) * dist
+				var z: float = sin(angle) * dist
+				var s := rng.randf_range(1.5, 3.0)
+				if not _is_clear(x, z, s * 0.7):
+					continue
+				_occupied.append([Vector2(x, z), s * 0.6])
+				_place_forest(forest, bush, x, z, s, false, rng)
+				bplaced += 1
 
 	# --- Mushroom grove around the stage (tall + toadstool dance) ---
 	var grove: Array = [toadstool, tall, cluster]
