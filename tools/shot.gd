@@ -7,10 +7,10 @@ extends Node
 #   /Applications/Godot.app/Contents/MacOS/Godot --path . res://tools/shot.tscn
 
 const SHOTS := [
-	# iPhone 6.9" — 1320 x 2868
-	{"f": "iphone-1-gnome-night", "w": 1320, "h": 2868, "char": 0, "night": true,  "play": true},
-	{"f": "iphone-2-frog-night",  "w": 1320, "h": 2868, "char": 1, "night": true,  "play": true},
-	{"f": "iphone-3-beaver-day",  "w": 1320, "h": 2868, "char": 2, "night": false, "play": true},
+	# iPhone 6.5" — 1284 x 2778 (matches App Store Connect's iPhone slot)
+	{"f": "iphone-1-gnome-night", "w": 1284, "h": 2778, "char": 0, "night": true,  "play": true},
+	{"f": "iphone-2-frog-night",  "w": 1284, "h": 2778, "char": 1, "night": true,  "play": true},
+	{"f": "iphone-3-beaver-day",  "w": 1284, "h": 2778, "char": 2, "night": false, "play": true},
 	# iPad 13" — 2064 x 2752
 	{"f": "ipad-1-gnome-night",   "w": 2064, "h": 2752, "char": 0, "night": true,  "play": true},
 	{"f": "ipad-2-frog-day",      "w": 2064, "h": 2752, "char": 1, "night": false, "play": true},
