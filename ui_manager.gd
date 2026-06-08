@@ -49,7 +49,6 @@ var _moon_icon: ImageTexture
 
 # --- Collapsible drawer ---
 var _drawer: VBoxContainer
-var _char_scroll: ScrollContainer
 var _char_strip: HBoxContainer
 var _char_buttons: Array[Button] = []
 var _char_group: ButtonGroup
@@ -95,17 +94,12 @@ func _ready() -> void:
 	_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bg_panel.add_child(_margin)
 
-	# CenterContainer guarantees the control column sits horizontally centered in
-	# the bar (the column width is capped in _apply_responsive_layout). This is
-	# robust against stretch/aspect quirks that left-shifted margin-based layouts.
-	var center_box := CenterContainer.new()
-	center_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_margin.add_child(center_box)
-
+	# The control column fills _margin; _margin's left/right margins are computed
+	# in _apply_responsive_layout to center a width-capped column on wide screens.
 	_outer = VBoxContainer.new()
 	_outer.add_theme_constant_override("separation", 10)
 	_outer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	center_box.add_child(_outer)
+	_margin.add_child(_outer)
 
 	_build_drawer()   # top (collapsible)
 	_build_bar()      # bottom (always visible)
@@ -192,18 +186,14 @@ func _build_drawer() -> void:
 	_drawer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_outer.add_child(_drawer)
 
-	# Character selector — horizontally scrollable strip of toggles.
-	_char_scroll = ScrollContainer.new()
-	_char_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	_char_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_char_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_drawer.add_child(_char_scroll)
-
+	# Character selector — a centered strip of toggles. (A ScrollContainer would
+	# left-align the cards even when they fit; a plain HBox with alignment CENTER
+	# keeps them centered. The roster is small enough to fit without scrolling.)
 	_char_strip = HBoxContainer.new()
 	_char_strip.alignment = BoxContainer.ALIGNMENT_CENTER
 	_char_strip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_char_strip.add_theme_constant_override("separation", 10)
-	_char_scroll.add_child(_char_strip)
+	_drawer.add_child(_char_strip)
 
 	# BPM fine slider.
 	_bpm_slider = HSlider.new()
@@ -474,18 +464,19 @@ func _apply_responsive_layout() -> void:
 	# On wide screens (tablets / landscape) the dark bar still spans the full
 	# bottom edge, but the controls are centered in a capped-width column so they
 	# don't stretch awkwardly across the whole display. On phones it fills width.
-	_margin.add_theme_constant_override("margin_left", h_pad)
-	_margin.add_theme_constant_override("margin_right", h_pad)
+	# Center a width-capped column via symmetric margins computed from the actual
+	# viewport width. On phones the column is ~full width; on tablets/landscape it
+	# stays a tidy centered column instead of stretching edge to edge.
+	var col := minf(vp.x - 2.0 * h_pad, MAX_CONTENT_WIDTH)
+	var side := int(maxf(float(h_pad), (vp.x - col) / 2.0))
+	_margin.add_theme_constant_override("margin_left", side)
+	_margin.add_theme_constant_override("margin_right", side)
 	_margin.add_theme_constant_override("margin_top", v_pad)
 	# Lift the bar clear of the curved bottom / home indicator: honor the safe-area
 	# inset (with a sensible floor in case iOS under-reports) plus extra breathing room.
 	var bottom_gap := v_pad + maxi(inset, int(20.0 * _ui_scale)) + int(16.0 * _ui_scale)
 	_margin.add_theme_constant_override("margin_bottom", bottom_gap)
-	# Cap the column width and let the CenterContainer center it. On phones it
-	# uses (almost) the full width; on tablets/landscape it stays a tidy centered
-	# column instead of stretching edge to edge.
-	var content_w := int(minf(vp.x - 2.0 * h_pad, MAX_CONTENT_WIDTH))
-	_outer.custom_minimum_size.x = content_w
+	_outer.custom_minimum_size.x = 0  # fill the centered column
 	_outer.add_theme_constant_override("separation", int(10.0 * _ui_scale))
 	_drawer.add_theme_constant_override("separation", int(10.0 * _ui_scale))
 
@@ -543,13 +534,14 @@ func _apply_responsive_layout() -> void:
 		var pic = cb.get_meta("pic") if cb.has_meta("pic") else null
 		if pic != null:
 			(pic as TextureRect).custom_minimum_size = Vector2(0, card_h - clbl - 18)
-	# ScrollContainer reports ~0 min height; pin it so the strip isn't clipped.
-	_char_scroll.custom_minimum_size = Vector2(0, card_h + int(8.0 * _ui_scale))
+	# Pin the strip height so the cards aren't clipped.
+	_char_strip.custom_minimum_size = Vector2(0, card_h + int(8.0 * _ui_scale))
 
-	# Day/night toggle — large, tappable icon button.
+	# Day/night toggle — large, tappable icon button with centered content.
 	if _daynight_button != null:
 		var dn_h := int(clampf(60.0 * _ui_scale, 54.0, 78.0))
 		_daynight_button.custom_minimum_size = Vector2(int(190.0 * _ui_scale), dn_h)
+		_daynight_button.alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_daynight_button.add_theme_font_size_override("font_size", int(clampf(20.0 * _ui_scale, 17.0, 26.0)))
 
 
