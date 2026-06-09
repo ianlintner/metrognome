@@ -12,7 +12,7 @@ Paste-ready text for App Store Connect and Google Play Console. Tighten to taste
 - **Play short description:** `A friendly metronome — keep time while cute characters hop to your beat.`
 
 ## Promotional text (App Store, ≤170 chars, updatable without review)
-`Practice rhythm with a metronome that's actually fun to look at. Pick your character, set the tempo, and watch them hop on every beat.`
+`Tap the tempo, pick your character, and watch them hop through a glowing enchanted forest — dawn, day, dusk, or night.`
 
 ## Description (full)
 
@@ -23,13 +23,26 @@ hops in perfect sync with every beat — the downbeat lands on character one, an
 the rhythm rolls down the line. It's a precise practice tool and a tiny toy at
 the same time.
 
+TAP TEMPO
+Don't know the BPM? Just tap along. Open the settings drawer, tap "Tap Tempo",
+and the app figures out the tempo from your taps in real time — then locks right
+in. Tap again to refine it any time.
+
+ENCHANTED GROVE
+Your characters perform in a living 3D forest that changes with the time of day.
+The scene auto-matches your device's clock: glowing mushrooms and fireflies at
+night, warm sunrise colors at dawn, fiery orange skies at dusk. Tap the icon in
+the corner to cycle between dawn, day, dusk, and night whenever you like.
+
 FEATURES
 • Accurate, steady metronome from 20 to 300 BPM
+• Tap Tempo — tap the screen to set any BPM instantly
 • Time signatures: 2/4, 3/4, 4/4, 5/4, 6/8, 7/8
 • Adjustable accent patterns (downbeat, 1st & 3rd, all, none)
-• Multiple click sounds and a volume control
-• Choose your performer — gnome, frog, beaver, with more to come
-• A relaxing 3D mushroom‑forest scene
+• Choose your performer — gnome, frog, or beaver, each with their own sound
+• Multiple click voices and a volume control
+• Four time-of-day scenes: dawn, day, dusk, night — synced to your clock
+• Plays audio with the silent switch on (iOS)
 • 100% offline. No ads. No accounts. No data collected.
 
 Whether you're a musician drilling tempo or just want a calmer way to count,
