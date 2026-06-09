@@ -8,7 +8,7 @@ signal play_toggled(playing: bool)
 signal sound_changed(sound_type: int)
 signal accent_mode_changed(mode: int)
 signal character_changed(index: int)
-signal day_night_changed(night: bool)
+signal day_night_changed(time_of_day: int)
 
 const TIME_SIGNATURES: Array = [
 	["2/4", 2, 4], ["3/4", 3, 4], ["4/4", 4, 4],
@@ -43,8 +43,10 @@ var _beat_dots_container: HBoxContainer
 var _beat_dots: Array[ColorRect] = []
 var _drawer_toggle: Button
 var _daynight_button: Button
-var _night_mode: bool = false
+var _time_of_day: int = 1  # 0=dawn 1=day 2=dusk 3=night
+var _dawn_icon: ImageTexture
 var _sun_icon: ImageTexture
+var _dusk_icon: ImageTexture
 var _moon_icon: ImageTexture
 
 # --- Collapsible drawer ---
@@ -58,6 +60,13 @@ var _sound_button: OptionButton
 var _accent_button: OptionButton
 var _volume_slider: HSlider
 var _volume_value_label: Label
+var _tap_tempo_button: Button
+
+# --- Tap tempo overlay ---
+var _tap_overlay: Control
+var _tap_bpm_label: Label
+var _tap_hint_label: Label
+var _tap_times: Array[float] = []
 
 # --- Layout scaffolding ---
 var _bg_panel: Panel
@@ -101,8 +110,10 @@ func _ready() -> void:
 	_outer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_margin.add_child(_outer)
 
-	_build_drawer()   # top (collapsible)
-	_build_bar()      # bottom (always visible)
+	_build_drawer()            # top (collapsible)
+	_build_bar()               # bottom (always visible)
+	_build_daynight_overlay()  # icon pinned to top-right corner
+	_build_tap_overlay()       # full-screen tap tempo mode
 
 	_create_beat_dots(4)
 	_update_play_button_style()
@@ -232,23 +243,6 @@ func _build_drawer() -> void:
 	_accent_button.item_selected.connect(_on_accent_changed)
 	selectors.add_child(_accent_button)
 
-	# Scene mode (day / night) toggle — a prominent icon button, centered.
-	_sun_icon = _make_sun_icon()
-	_moon_icon = _make_moon_icon()
-
-	var scene_row := HBoxContainer.new()
-	scene_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_drawer.add_child(scene_row)
-
-	_daynight_button = Button.new()
-	_daynight_button.focus_mode = Control.FOCUS_NONE
-	_daynight_button.expand_icon = true
-	_daynight_button.add_theme_constant_override("h_separation", 10)
-	_daynight_button.tooltip_text = "Toggle day / night"
-	_daynight_button.pressed.connect(_on_daynight_pressed)
-	scene_row.add_child(_daynight_button)
-	_update_daynight_label()
-
 	# Volume row.
 	var vol_row := HBoxContainer.new()
 	vol_row.add_theme_constant_override("separation", 10)
@@ -270,33 +264,236 @@ func _build_drawer() -> void:
 	_volume_value_label.add_theme_color_override("font_color", VALUE_COLOR)
 	vol_row.add_child(_volume_value_label)
 
+	# Tap Tempo button — full width, bottom of drawer.
+	_tap_tempo_button = Button.new()
+	_tap_tempo_button.text = "Tap Tempo"
+	_tap_tempo_button.focus_mode = Control.FOCUS_NONE
+	_tap_tempo_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var tt_style := StyleBoxFlat.new()
+	tt_style.bg_color = Color(0.18, 0.22, 0.32)
+	tt_style.set_corner_radius_all(14)
+	_tap_tempo_button.add_theme_stylebox_override("normal", tt_style)
+	var tt_hover := StyleBoxFlat.new()
+	tt_hover.bg_color = Color(0.25, 0.32, 0.48)
+	tt_hover.set_corner_radius_all(14)
+	_tap_tempo_button.add_theme_stylebox_override("hover", tt_hover)
+	_tap_tempo_button.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
+	_tap_tempo_button.pressed.connect(_show_tap_overlay)
+	_drawer.add_child(_tap_tempo_button)
+
+
+# ---------------------------------------------------------------------------
+# Top-right day/night icon overlay
+# ---------------------------------------------------------------------------
+func _build_daynight_overlay() -> void:
+	_dawn_icon = _make_sun_icon(Color(1.0, 0.72, 0.40))
+	_sun_icon  = _make_sun_icon(Color(1.0, 0.82, 0.28))
+	_dusk_icon = _make_sun_icon(Color(1.0, 0.48, 0.18))
+	_moon_icon = _make_moon_icon()
+
+	# Use a child CanvasLayer so the overlay spans the full viewport regardless
+	# of UIManager's own PRESET_BOTTOM_WIDE rect.
+	var layer := CanvasLayer.new()
+	layer.layer = 1  # above the main UI (layer 0), below the title splash (layer 100)
+	add_child(layer)
+
+	var overlay := Control.new()
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(overlay)
+
+	_daynight_button = Button.new()
+	_daynight_button.flat = true
+	_daynight_button.focus_mode = Control.FOCUS_NONE
+	_daynight_button.expand_icon = true
+	_daynight_button.tooltip_text = "Change time of day"
+	_daynight_button.pressed.connect(_on_daynight_pressed)
+
+	# Subtle semi-transparent disc so the icon reads against any sky color.
+	for state_name in ["normal", "hover", "pressed"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.0, 0.0, 0.0, 0.28 if state_name == "normal" else 0.45)
+		sb.set_corner_radius_all(100)
+		sb.set_content_margin_all(0)
+		_daynight_button.add_theme_stylebox_override(state_name, sb)
+
+	# Anchor to top-right; exact offsets tuned in _apply_responsive_layout.
+	_daynight_button.anchor_left = 1.0
+	_daynight_button.anchor_right = 1.0
+	_daynight_button.anchor_top = 0.0
+	_daynight_button.anchor_bottom = 0.0
+	_daynight_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_daynight_button.grow_vertical = Control.GROW_DIRECTION_END
+
+	overlay.add_child(_daynight_button)
+	_update_daynight_icon()
+
+
+# ---------------------------------------------------------------------------
+# Tap tempo overlay  (CanvasLayer layer 2 — above day/night icon at layer 1)
+# ---------------------------------------------------------------------------
+func _build_tap_overlay() -> void:
+	var tap_layer := CanvasLayer.new()
+	tap_layer.layer = 2
+	add_child(tap_layer)
+
+	_tap_overlay = Control.new()
+	_tap_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_tap_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_tap_overlay.visible = false
+	_tap_overlay.gui_input.connect(_on_tap_input)
+	tap_layer.add_child(_tap_overlay)
+
+	var bg := ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(0.0, 0.02, 0.08, 0.88)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tap_overlay.add_child(bg)
+
+	# "Done" button — top-left, always reachable
+	var close_btn := Button.new()
+	close_btn.text = "✕  Done"
+	close_btn.flat = true
+	close_btn.focus_mode = Control.FOCUS_NONE
+	close_btn.anchor_left = 0.0
+	close_btn.anchor_right = 0.0
+	close_btn.anchor_top = 0.0
+	close_btn.anchor_bottom = 0.0
+	close_btn.offset_left = 20.0
+	close_btn.offset_top = 20.0
+	close_btn.offset_right = 180.0
+	close_btn.offset_bottom = 68.0
+	close_btn.add_theme_color_override("font_color", Color(0.8, 0.8, 0.9))
+	close_btn.add_theme_font_size_override("font_size", 22)
+	close_btn.pressed.connect(_hide_tap_overlay)
+	_tap_overlay.add_child(close_btn)
+
+	# Centered column: title, big BPM number, unit label, hint
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tap_overlay.add_child(center)
+
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 16)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.add_child(col)
+
+	var title_lbl := Label.new()
+	title_lbl.text = "TAP TEMPO"
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_lbl.add_theme_color_override("font_color", ACCENT_COLOR)
+	title_lbl.add_theme_font_size_override("font_size", 28)
+	title_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(title_lbl)
+
+	_tap_bpm_label = Label.new()
+	_tap_bpm_label.text = "---"
+	_tap_bpm_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_tap_bpm_label.add_theme_color_override("font_color", Color.WHITE)
+	_tap_bpm_label.add_theme_font_size_override("font_size", 112)
+	_tap_bpm_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(_tap_bpm_label)
+
+	var unit_lbl := Label.new()
+	unit_lbl.text = "BPM"
+	unit_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	unit_lbl.add_theme_color_override("font_color", Color(0.7, 0.7, 0.8))
+	unit_lbl.add_theme_font_size_override("font_size", 26)
+	unit_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(unit_lbl)
+
+	_tap_hint_label = Label.new()
+	_tap_hint_label.text = "Tap anywhere to set tempo"
+	_tap_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_tap_hint_label.add_theme_color_override("font_color", Color(0.6, 0.65, 0.75))
+	_tap_hint_label.add_theme_font_size_override("font_size", 20)
+	_tap_hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(_tap_hint_label)
+
+
+func _show_tap_overlay() -> void:
+	_tap_times.clear()
+	_tap_bpm_label.text = "---"
+	_tap_hint_label.text = "Tap anywhere to set tempo"
+	_tap_overlay.visible = true
+	if not _is_playing:
+		_on_play_pressed()
+
+
+func _hide_tap_overlay() -> void:
+	_tap_overlay.visible = false
+
+
+func _on_tap_input(event: InputEvent) -> void:
+	var pressed := false
+	if event is InputEventMouseButton:
+		pressed = (event as InputEventMouseButton).pressed
+	elif event is InputEventScreenTouch:
+		pressed = (event as InputEventScreenTouch).pressed
+	if pressed:
+		_register_tap()
+
+
+func _register_tap() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	# Reset if the user paused for more than 3 seconds
+	if _tap_times.size() > 0 and (now - _tap_times.back()) > 3.0:
+		_tap_times.clear()
+	_tap_times.append(now)
+	while _tap_times.size() > 8:
+		_tap_times.remove_at(0)
+
+	# Flash the BPM number on each tap
+	var tw := create_tween()
+	tw.tween_property(_tap_bpm_label, "modulate", Color(ACCENT_COLOR.r, ACCENT_COLOR.g, ACCENT_COLOR.b), 0.0)
+	tw.tween_property(_tap_bpm_label, "modulate", Color.WHITE, 0.18)
+
+	if _tap_times.size() < 2:
+		_tap_hint_label.text = "Keep tapping..."
+		return
+
+	var bpm := _calculate_tap_bpm()
+	_tap_bpm_label.text = str(bpm)
+	_tap_hint_label.text = "Tap to refine"
+	# Drive slider → triggers _on_bpm_slider_changed → updates label + emits bpm_changed
+	_bpm_slider.value = float(bpm)
+
+
+func _calculate_tap_bpm() -> int:
+	if _tap_times.size() < 2:
+		return 120
+	var total_interval: float = float(_tap_times.back()) - float(_tap_times.front())
+	var avg_interval: float = total_interval / float(_tap_times.size() - 1)
+	if avg_interval <= 0.0:
+		return 120
+	return clamp(int(round(60.0 / avg_interval)), BPM_MIN, BPM_MAX)
+
 
 func _on_daynight_pressed() -> void:
-	_night_mode = not _night_mode
-	_update_daynight_label()
-	day_night_changed.emit(_night_mode)
+	_time_of_day = (_time_of_day + 1) % 4
+	_update_daynight_icon()
+	day_night_changed.emit(_time_of_day)
 
 
-# Called by main to sync the button with the clock-derived starting mode.
-func set_day_night(night: bool) -> void:
-	_night_mode = night
-	_update_daynight_label()
+# Called by main to sync the button with the clock-derived starting state.
+func set_day_night(tod: int) -> void:
+	_time_of_day = clamp(tod, 0, 3)
+	_update_daynight_icon()
 
 
-func _update_daynight_label() -> void:
+func _update_daynight_icon() -> void:
 	if _daynight_button == null:
 		return
-	if _night_mode:
-		_daynight_button.text = "Night"
-		_daynight_button.icon = _moon_icon
-	else:
-		_daynight_button.text = "Day"
-		_daynight_button.icon = _sun_icon
+	var icons: Array = [_dawn_icon, _sun_icon, _dusk_icon, _moon_icon]
+	var tips: Array  = ["Dawn", "Day", "Dusk", "Night"]
+	_daynight_button.icon = icons[_time_of_day]
+	_daynight_button.tooltip_text = tips[_time_of_day]
 
 
-# Procedurally drawn sun icon (gold disc + 8 rays) so we don't depend on emoji
-# fonts that aren't bundled on iOS.
-func _make_sun_icon() -> ImageTexture:
+# Procedurally drawn sun icon (disc + 8 rays). Pass a tint to get dawn/day/dusk variants.
+func _make_sun_icon(tint: Color = Color(1.0, 0.82, 0.28)) -> ImageTexture:
 	var s := 96
 	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
@@ -304,7 +501,7 @@ func _make_sun_icon() -> ImageTexture:
 	var core := s * 0.24
 	var ray_in := s * 0.30
 	var ray_out := s * 0.47
-	var gold := Color(1.0, 0.82, 0.28)
+	var gold := tint
 	for y in s:
 		for x in s:
 			var p := Vector2(x + 0.5, y + 0.5)
@@ -537,12 +734,19 @@ func _apply_responsive_layout() -> void:
 	# Pin the strip height so the cards aren't clipped.
 	_char_strip.custom_minimum_size = Vector2(0, card_h + int(8.0 * _ui_scale))
 
-	# Day/night toggle — large, tappable icon button with centered content.
+	# Tap Tempo button — same height as option buttons.
+	if _tap_tempo_button != null:
+		_tap_tempo_button.custom_minimum_size = Vector2(0, tap_h)
+		_tap_tempo_button.add_theme_font_size_override("font_size", int(label_fs * 1.05))
+
+	# Day/night icon — top-right corner overlay, scaled with the UI.
 	if _daynight_button != null:
-		var dn_h := int(clampf(60.0 * _ui_scale, 54.0, 78.0))
-		_daynight_button.custom_minimum_size = Vector2(int(190.0 * _ui_scale), dn_h)
-		_daynight_button.alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_daynight_button.add_theme_font_size_override("font_size", int(clampf(20.0 * _ui_scale, 17.0, 26.0)))
+		var icon_sz := int(clampf(56.0 * _ui_scale, 48.0, 72.0))
+		var margin  := int(clampf(12.0 * _ui_scale, 8.0, 18.0))
+		_daynight_button.offset_right  = -float(margin)
+		_daynight_button.offset_left   = -(float(icon_sz) + float(margin))
+		_daynight_button.offset_top    = float(margin)
+		_daynight_button.offset_bottom = float(icon_sz) + float(margin)
 
 
 func _bottom_inset() -> int:

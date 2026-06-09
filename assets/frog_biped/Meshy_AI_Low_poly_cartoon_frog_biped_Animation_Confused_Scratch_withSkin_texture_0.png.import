@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dn8ty6xjhcg2h"
-path="res://.godot/imported/Meshy_AI_Low_poly_cartoon_frog_biped_Animation_Confused_Scratch_withSkin_texture_0.png-f96f1f1f93885e8def79550c49a57b0a.ctex"
+path.s3tc="res://.godot/imported/Meshy_AI_Low_poly_cartoon_frog_biped_Animation_Confused_Scratch_withSkin_texture_0.png-f96f1f1f93885e8def79550c49a57b0a.s3tc.ctex"
+path.etc2="res://.godot/imported/Meshy_AI_Low_poly_cartoon_frog_biped_Animation_Confused_Scratch_withSkin_texture_0.png-f96f1f1f93885e8def79550c49a57b0a.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "9214f10191f9d05602d654680ab12ec7"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/frog_biped/Meshy_AI_Low_poly_cartoon_frog_biped_Animation_Confused_Scratch_withSkin_texture_0.png"
-dest_files=["res://.godot/imported/Meshy_AI_Low_poly_cartoon_frog_biped_Animation_Confused_Scratch_withSkin_texture_0.png-f96f1f1f93885e8def79550c49a57b0a.ctex"]
+dest_files=["res://.godot/imported/Meshy_AI_Low_poly_cartoon_frog_biped_Animation_Confused_Scratch_withSkin_texture_0.png-f96f1f1f93885e8def79550c49a57b0a.s3tc.ctex", "res://.godot/imported/Meshy_AI_Low_poly_cartoon_frog_biped_Animation_Confused_Scratch_withSkin_texture_0.png-f96f1f1f93885e8def79550c49a57b0a.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +42,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

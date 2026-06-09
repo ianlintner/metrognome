@@ -76,11 +76,12 @@ var _gnome_anim_players: Array[AnimationPlayer] = []  # index-aligned with _gnom
 var _hop_anim: Animation  # arms-down hop for the active character
 var _swayers: Array[MushroomSway] = []  # dancing mushrooms pulsed on the beat
 
-# Enchanted-grove day/night
-var _night: bool = false
+# Enchanted-grove day/night  (0=dawn 1=day 2=dusk 3=night)
+var _time_of_day: int = 1
 var _env: Environment
 var _sky_mat: ProceduralSkyMaterial
 var _sun: DirectionalLight3D
+var _moon_mesh: MeshInstance3D
 var _glow_mats: Array[StandardMaterial3D] = []  # mushroom materials that glow at night
 var _fireflies: GPUParticles3D
 var _hop_uses_node_bounce: bool = false  # true when the clip has no real lift
@@ -116,11 +117,19 @@ func _ready() -> void:
 	_setup_camera()
 	_populate_character_selector()
 	_apply_character_sound()  # start on the active character's signature sound
-	# Pick day or night from the device's local clock (night 7pm–7am).
+	# Map the device's local clock to one of four time-of-day states.
 	var hour: int = Time.get_datetime_dict_from_system().hour
-	var night: bool = hour < 7 or hour >= 19
-	_apply_time_of_day(night)
-	_ui_manager.set_day_night(night)
+	var tod: int
+	if hour >= 5 and hour < 8:
+		tod = 0  # dawn
+	elif hour >= 8 and hour < 17:
+		tod = 1  # day
+	elif hour >= 17 and hour < 20:
+		tod = 2  # dusk
+	else:
+		tod = 3  # night
+	_apply_time_of_day(tod)
+	_ui_manager.set_day_night(tod)
 
 
 const TITLE_FONT := "res://assets/fonts/LuckiestGuy-Regular.ttf"
@@ -261,55 +270,105 @@ func _setup_lighting() -> void:
 	add_child(sun)
 	_sun = sun
 
+	# Moon disc visible only at night — a glowing sphere set back in the sky.
+	var moon_mat := StandardMaterial3D.new()
+	moon_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	moon_mat.albedo_color = Color(0.96, 0.96, 0.88)
+	moon_mat.emission_enabled = true
+	moon_mat.emission = Color(0.84, 0.84, 0.75)
+	moon_mat.emission_energy_multiplier = 1.4
+	var moon_sphere := SphereMesh.new()
+	moon_sphere.radius = 2.0
+	moon_sphere.height = 4.0
+	var moon := MeshInstance3D.new()
+	moon.name = "Moon"
+	moon.mesh = moon_sphere
+	moon.material_override = moon_mat
+	moon.position = Vector3(7.0, 21.0, 36.0)
+	moon.visible = false
+	add_child(moon)
+	_moon_mesh = moon
 
-# === Enchanted-grove day/night ===============================================
-# Two hand-tuned palettes. Tweak these to taste — they're the whole mood of the
-# scene. Day = warm sun-dappled clearing; Night = cool magical glow.
-func _apply_time_of_day(night: bool) -> void:
-	_night = night
+
+# === Enchanted-grove time-of-day ============================================
+# Four hand-tuned palettes:  0=dawn  1=day  2=dusk  3=night
+func _apply_time_of_day(tod: int) -> void:
+	_time_of_day = tod
 	if _env == null or _sky_mat == null or _sun == null:
 		return
 
-	if night:
-		_sky_mat.sky_top_color = Color(0.04, 0.05, 0.14)
-		_sky_mat.sky_horizon_color = Color(0.10, 0.16, 0.26)
-		_sky_mat.ground_horizon_color = Color(0.06, 0.10, 0.12)
-		_sky_mat.ground_bottom_color = Color(0.02, 0.04, 0.05)
-		_env.ambient_light_color = Color(0.20, 0.28, 0.42)
-		_env.ambient_light_energy = 0.45
-		_env.fog_light_color = Color(0.14, 0.22, 0.30)  # cool teal haze
-		_env.fog_light_energy = 0.8
-		_env.glow_intensity = 0.9                       # glows pop in the dark
-		_sun.light_energy = 0.35                         # dim "moonlight"
-		_sun.light_color = Color(0.55, 0.68, 0.95)
-	else:
-		_sky_mat.sky_top_color = Color(0.35, 0.55, 0.85)
-		_sky_mat.sky_horizon_color = Color(0.6, 0.7, 0.75)
-		_sky_mat.ground_horizon_color = Color(0.25, 0.35, 0.15)
-		_sky_mat.ground_bottom_color = Color(0.1, 0.2, 0.05)
-		_env.ambient_light_color = Color(0.5, 0.55, 0.4)
-		_env.ambient_light_energy = 0.7
-		_env.fog_light_color = Color(0.55, 0.68, 0.55)  # green haze
-		_env.fog_light_energy = 1.0
-		_env.glow_intensity = 0.4
-		_sun.light_energy = 1.8
-		_sun.light_color = Color(1, 0.95, 0.85)
+	match tod:
+		0:  # Dawn — purple sky bleeding into warm pink horizon
+			_sky_mat.sky_top_color = Color(0.18, 0.12, 0.30)
+			_sky_mat.sky_horizon_color = Color(0.82, 0.42, 0.22)
+			_sky_mat.ground_horizon_color = Color(0.42, 0.22, 0.10)
+			_sky_mat.ground_bottom_color = Color(0.08, 0.06, 0.12)
+			_env.ambient_light_color = Color(0.50, 0.35, 0.38)
+			_env.ambient_light_energy = 0.50
+			_env.fog_light_color = Color(0.50, 0.30, 0.22)
+			_env.fog_light_energy = 0.70
+			_env.glow_intensity = 0.55
+			_sun.rotation_degrees = Vector3(-15, 70, 0)  # low from the east
+			_sun.light_energy = 0.75
+			_sun.light_color = Color(1.0, 0.65, 0.35)
+		1:  # Day — bright blue sky, warm sun overhead
+			_sky_mat.sky_top_color = Color(0.35, 0.55, 0.85)
+			_sky_mat.sky_horizon_color = Color(0.6, 0.7, 0.75)
+			_sky_mat.ground_horizon_color = Color(0.25, 0.35, 0.15)
+			_sky_mat.ground_bottom_color = Color(0.1, 0.2, 0.05)
+			_env.ambient_light_color = Color(0.5, 0.55, 0.4)
+			_env.ambient_light_energy = 0.70
+			_env.fog_light_color = Color(0.55, 0.68, 0.55)
+			_env.fog_light_energy = 1.0
+			_env.glow_intensity = 0.40
+			_sun.rotation_degrees = Vector3(-50, 30, 0)
+			_sun.light_energy = 1.8
+			_sun.light_color = Color(1.0, 0.95, 0.85)
+		2:  # Dusk — deep blue sky, fiery orange horizon
+			_sky_mat.sky_top_color = Color(0.12, 0.15, 0.32)
+			_sky_mat.sky_horizon_color = Color(0.80, 0.38, 0.18)
+			_sky_mat.ground_horizon_color = Color(0.38, 0.18, 0.08)
+			_sky_mat.ground_bottom_color = Color(0.06, 0.05, 0.08)
+			_env.ambient_light_color = Color(0.45, 0.30, 0.20)
+			_env.ambient_light_energy = 0.45
+			_env.fog_light_color = Color(0.42, 0.25, 0.12)
+			_env.fog_light_energy = 0.80
+			_env.glow_intensity = 0.70
+			_sun.rotation_degrees = Vector3(-15, -110, 0)  # low from the west
+			_sun.light_energy = 0.60
+			_sun.light_color = Color(1.0, 0.55, 0.25)
+		3:  # Night — deep indigo, cool moonlight
+			_sky_mat.sky_top_color = Color(0.04, 0.05, 0.14)
+			_sky_mat.sky_horizon_color = Color(0.10, 0.16, 0.26)
+			_sky_mat.ground_horizon_color = Color(0.06, 0.10, 0.12)
+			_sky_mat.ground_bottom_color = Color(0.02, 0.04, 0.05)
+			_env.ambient_light_color = Color(0.20, 0.28, 0.42)
+			_env.ambient_light_energy = 0.45
+			_env.fog_light_color = Color(0.14, 0.22, 0.30)
+			_env.fog_light_energy = 0.80
+			_env.glow_intensity = 0.90
+			_sun.rotation_degrees = Vector3(-70, 30, 0)  # moonlight from above
+			_sun.light_energy = 0.35
+			_sun.light_color = Color(0.55, 0.68, 0.95)
 
-	# Mushroom caps self-illuminate: faint by day, vivid by night.
-	var glow := 1.3 if night else 0.12
+	# Moon mesh visible only at night.
+	if _moon_mesh != null:
+		_moon_mesh.visible = (tod == 3)
+
+	# Mushroom caps: faint by day, brightening toward night.
+	var glow_levels := [0.50, 0.12, 0.70, 1.30]
+	var glow: float = glow_levels[clamp(tod, 0, 3)]
 	for m in _glow_mats:
 		m.emission_energy_multiplier = glow
 
-	# Fireflies: barely any by day, a gentle scatter by night.
+	# Fireflies: sparse by day, building through dusk, full scatter at night.
 	if _fireflies != null:
-		_fireflies.amount_ratio = 0.7 if night else 0.15
+		var amounts := [0.40, 0.15, 0.50, 0.70]
+		_fireflies.amount_ratio = amounts[clamp(tod, 0, 3)]
 		var fm := _fireflies.draw_pass_1.surface_get_material(0) if _fireflies.draw_pass_1 else null
 		if fm is StandardMaterial3D:
-			(fm as StandardMaterial3D).emission_energy_multiplier = 3.0 if night else 1.2
-
-
-func _toggle_day_night() -> void:
-	_apply_time_of_day(not _night)
+			var energies := [1.5, 1.2, 2.0, 3.0]
+			(fm as StandardMaterial3D).emission_energy_multiplier = energies[clamp(tod, 0, 3)]
 
 
 func _setup_ground() -> void:
