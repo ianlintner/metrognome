@@ -21,6 +21,7 @@ config/icon="res://assets/branding/icon_1024.png"
 [audio]
 
 general/ios/session_category=3
+driver/enable_input=true
 
 [display]
 
