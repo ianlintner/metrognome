@@ -137,5 +137,5 @@ func _process(delta: float) -> void:
 		return
 
 	_had_signal = true
-	var note := Tuner.nearest_note(result.frequency, _candidates)
+	var note := nearest_note(result.frequency, _candidates)
 	pitch_detected.emit(result.frequency, String(note.name), float(note.cents), float(result.clarity))

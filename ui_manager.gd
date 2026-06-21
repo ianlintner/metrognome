@@ -9,6 +9,7 @@ signal sound_changed(sound_type: int)
 signal accent_mode_changed(mode: int)
 signal character_changed(index: int)
 signal day_night_changed(time_of_day: int)
+signal mode_changed(mode: int)  # 0 = metronome, 1 = tuner
 
 const TIME_SIGNATURES: Array = [
 	["2/4", 2, 4], ["3/4", 3, 4], ["4/4", 4, 4],
@@ -48,6 +49,9 @@ var _dawn_icon: ImageTexture
 var _sun_icon: ImageTexture
 var _dusk_icon: ImageTexture
 var _moon_icon: ImageTexture
+var _icon_layer_overlay: Control  # shared full-viewport overlay for corner icon buttons
+var _help_button: Button
+var _help_modal: Control
 
 # --- Collapsible drawer ---
 var _drawer: VBoxContainer
@@ -80,6 +84,13 @@ var _drawer_open: bool = false
 var _current_beats: int = 4
 var _ui_scale: float = 1.0
 
+# --- Tab bar (Metronome | Tuner) ---
+var _tab_bar: HBoxContainer
+var _metronome_tab: Button
+var _tuner_tab: Button
+var _tuner_ui: Control  # TunerUI instance
+var _mode: int = 0  # 0 = metronome, 1 = tuner
+
 
 func _ready() -> void:
 	# Root spans the full width, pinned to the bottom, growing upward. Only the
@@ -110,10 +121,14 @@ func _ready() -> void:
 	_outer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_margin.add_child(_outer)
 
+	_build_tabs()              # top Metronome|Tuner segmented control
 	_build_drawer()            # top (collapsible)
 	_build_bar()               # bottom (always visible)
-	_build_daynight_overlay()  # icon pinned to top-right corner
-	_build_tap_overlay()       # full-screen tap tempo mode
+	_build_daynight_overlay()  # icon pinned to top-right corner (also creates _icon_layer_overlay)
+	_build_help_button()       # ? icon pinned to top-left corner (reuses _icon_layer_overlay)
+	_build_tap_overlay()       # full-screen tap tempo mode (layer 2)
+	_build_help_modal()        # full-screen help modal (layer 3)
+	_build_tuner_ui()          # bottom tuner meter, hidden until Tuner tab
 
 	_create_beat_dots(4)
 	_update_play_button_style()
@@ -301,6 +316,7 @@ func _build_daynight_overlay() -> void:
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(overlay)
+	_icon_layer_overlay = overlay  # shared with _build_help_button()
 
 	_daynight_button = Button.new()
 	_daynight_button.flat = true
@@ -411,6 +427,204 @@ func _build_tap_overlay() -> void:
 	_tap_hint_label.add_theme_font_size_override("font_size", 20)
 	_tap_hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(_tap_hint_label)
+
+
+# ---------------------------------------------------------------------------
+# Top-left help icon button  (reuses _icon_layer_overlay from day/night)
+# ---------------------------------------------------------------------------
+func _build_help_button() -> void:
+	_help_button = Button.new()
+	_help_button.text = "?"
+	_help_button.flat = true
+	_help_button.focus_mode = Control.FOCUS_NONE
+	_help_button.tooltip_text = "Help"
+	_help_button.pressed.connect(_show_help_modal)
+
+	for state_name in ["normal", "hover", "pressed"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.0, 0.0, 0.0, 0.28 if state_name == "normal" else 0.45)
+		sb.set_corner_radius_all(100)
+		sb.set_content_margin_all(0)
+		_help_button.add_theme_stylebox_override(state_name, sb)
+
+	# Anchor to top-left; exact offsets tuned in _apply_responsive_layout.
+	_help_button.anchor_left = 0.0
+	_help_button.anchor_right = 0.0
+	_help_button.anchor_top = 0.0
+	_help_button.anchor_bottom = 0.0
+	_help_button.grow_horizontal = Control.GROW_DIRECTION_END
+	_help_button.grow_vertical = Control.GROW_DIRECTION_END
+	_help_button.add_theme_color_override("font_color", Color(0.88, 0.88, 1.0))
+
+	_icon_layer_overlay.add_child(_help_button)
+
+
+# ---------------------------------------------------------------------------
+# Full-screen help modal  (CanvasLayer layer 3 — above everything)
+# ---------------------------------------------------------------------------
+func _build_help_modal() -> void:
+	var help_layer := CanvasLayer.new()
+	help_layer.layer = 3
+	add_child(help_layer)
+
+	_help_modal = Control.new()
+	_help_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_help_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	_help_modal.visible = false
+	help_layer.add_child(_help_modal)
+
+	# Dark backdrop
+	var bg := ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(0.0, 0.02, 0.08, 0.92)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_help_modal.add_child(bg)
+
+	# Card panel — inset from all edges to give a floating sheet feel.
+	var card := Panel.new()
+	card.anchor_left = 0.04
+	card.anchor_right = 0.96
+	card.anchor_top = 0.05
+	card.anchor_bottom = 0.95
+	var card_style := StyleBoxFlat.new()
+	card_style.bg_color = Color(0.08, 0.09, 0.15, 0.98)
+	card_style.set_corner_radius_all(20)
+	card_style.set_content_margin_all(0)
+	card.add_theme_stylebox_override("panel", card_style)
+	_help_modal.add_child(card)
+
+	var inner := MarginContainer.new()
+	inner.set_anchors_preset(Control.PRESET_FULL_RECT)
+	inner.add_theme_constant_override("margin_left", 24)
+	inner.add_theme_constant_override("margin_right", 24)
+	inner.add_theme_constant_override("margin_top", 20)
+	inner.add_theme_constant_override("margin_bottom", 20)
+	card.add_child(inner)
+
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 12)
+	inner.add_child(col)
+
+	# Title row with close button
+	var title_row := HBoxContainer.new()
+	col.add_child(title_row)
+
+	var title_lbl := Label.new()
+	title_lbl.text = "HOW TO PLAY"
+	title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_lbl.add_theme_color_override("font_color", ACCENT_COLOR)
+	title_lbl.add_theme_font_size_override("font_size", 26)
+	title_row.add_child(title_lbl)
+
+	var close_btn := Button.new()
+	close_btn.text = "✕"
+	close_btn.flat = true
+	close_btn.focus_mode = Control.FOCUS_NONE
+	close_btn.add_theme_color_override("font_color", Color(0.7, 0.7, 0.8))
+	close_btn.add_theme_font_size_override("font_size", 26)
+	close_btn.pressed.connect(_hide_help_modal)
+	title_row.add_child(close_btn)
+
+	var sep := HSeparator.new()
+	sep.modulate = Color(1.0, 1.0, 1.0, 0.15)
+	col.add_child(sep)
+
+	# Scrollable content area — takes all remaining vertical space.
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
+
+	var entries := VBoxContainer.new()
+	entries.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	entries.add_theme_constant_override("separation", 4)
+	scroll.add_child(entries)
+
+	# ── Main bar ──────────────────────────────────────────────────────────
+	_add_help_section(entries, "MAIN BAR")
+	_add_help_entry(entries, "▶ Play / ▌▌ Pause",
+		"Starts and stops the metronome")
+	_add_help_entry(entries, "−  /  +",
+		"Nudge the BPM down or up by one step")
+	_add_help_entry(entries, "BPM readout",
+		"Current tempo — open the drawer to fine-tune with the slider")
+	_add_help_entry(entries, "Beat dots",
+		"Pulses on every beat; the gold dot marks the accented beat")
+	_add_help_entry(entries, "▲  /  ▼",
+		"Opens and closes the settings drawer")
+
+	# ── Settings drawer ───────────────────────────────────────────────────
+	_add_help_section(entries, "SETTINGS DRAWER  (tap ▲)")
+	_add_help_entry(entries, "Character cards",
+		"Choose Gnome, Frog, or Beaver — each has a distinct click sound")
+	_add_help_entry(entries, "BPM slider",
+		"Fine-tune the tempo from 20 to 300 BPM")
+	_add_help_entry(entries, "Time Signature",
+		"2/4 · 3/4 · 4/4 · 5/4 · 6/8 · 7/8")
+	_add_help_entry(entries, "Sound",
+		"Click voice: Metronome, Ribbit, Thump, Wood Block, or Beep")
+	_add_help_entry(entries, "Accent",
+		"Which beats are emphasized: Downbeat, 1st & 3rd, All Even, or None")
+	_add_help_entry(entries, "Volume",
+		"Master volume for all sounds")
+	_add_help_entry(entries, "Tap Tempo",
+		"Opens a full-screen overlay — tap anywhere to set BPM by feel; uses a rolling average of your last 8 taps")
+
+	# ── Corner icons ──────────────────────────────────────────────────────
+	_add_help_section(entries, "CORNER ICONS")
+	_add_help_entry(entries, "Time-of-day  (top right)",
+		"Cycles Dawn → Day → Dusk → Night; auto-set from your device clock on launch")
+	_add_help_entry(entries, "Help  (top left)",
+		"This screen")
+
+
+func _add_help_section(parent: VBoxContainer, title: String) -> void:
+	# Spacer before section header (skip for the very first one).
+	if parent.get_child_count() > 0:
+		var spacer := Control.new()
+		spacer.custom_minimum_size = Vector2(0, 10)
+		parent.add_child(spacer)
+
+	var lbl := Label.new()
+	lbl.text = title
+	lbl.add_theme_color_override("font_color", Color(0.55, 0.65, 0.85))
+	lbl.add_theme_font_size_override("font_size", 13)
+	parent.add_child(lbl)
+
+	var rule := HSeparator.new()
+	rule.modulate = Color(1.0, 1.0, 1.0, 0.10)
+	parent.add_child(rule)
+
+
+func _add_help_entry(parent: VBoxContainer, ctrl_text: String, desc_text: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	parent.add_child(row)
+
+	var ctrl_lbl := Label.new()
+	ctrl_lbl.text = ctrl_text
+	ctrl_lbl.custom_minimum_size = Vector2(130, 0)
+	ctrl_lbl.size_flags_horizontal = Control.SIZE_FILL
+	ctrl_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ctrl_lbl.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
+	ctrl_lbl.add_theme_font_size_override("font_size", 15)
+	row.add_child(ctrl_lbl)
+
+	var desc_lbl := Label.new()
+	desc_lbl.text = desc_text
+	desc_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc_lbl.add_theme_color_override("font_color", Color(0.72, 0.72, 0.84))
+	desc_lbl.add_theme_font_size_override("font_size", 14)
+	row.add_child(desc_lbl)
+
+
+func _show_help_modal() -> void:
+	_help_modal.visible = true
+
+
+func _hide_help_modal() -> void:
+	_help_modal.visible = false
 
 
 func _show_tap_overlay() -> void:
@@ -543,15 +757,26 @@ func _toggle_drawer() -> void:
 
 
 func _refresh_panel_height(animate: bool) -> void:
-	# Panel height = bar (+ drawer when open). Slide offset_top so the bar stays
-	# pinned to the bottom and the drawer expands upward.
-	_drawer.visible = _drawer_open
+	# Set visibility first so minimum-size queries are accurate.
+	var is_metro := (_mode == 0)
+	_drawer.visible = is_metro and _drawer_open
+	_bar.visible = is_metro
+	if _tuner_ui != null:
+		_tuner_ui.visible = not is_metro
+
 	var inset := _bottom_inset()
 	var v_pad := int(14.0 * _ui_scale)
-	var bar_h := _bar.get_combined_minimum_size().y
-	var total := bar_h + v_pad * 2.0 + inset
-	if _drawer_open:
-		total += _drawer.get_combined_minimum_size().y + _outer.get_theme_constant("separation")
+	var sep := _outer.get_theme_constant("separation")
+	var tab_h := _tab_bar.get_combined_minimum_size().y if _tab_bar != null else 0.0
+	var total: float
+	if is_metro:
+		var bar_h := _bar.get_combined_minimum_size().y
+		total = tab_h + sep + bar_h + v_pad * 2.0 + inset
+		if _drawer_open:
+			total += _drawer.get_combined_minimum_size().y + sep
+	else:
+		var tu_h: float = (_tuner_ui.custom_minimum_size.y if _tuner_ui != null else 280.0)
+		total = tab_h + sep + tu_h + v_pad * 2.0 + inset
 
 	if _height_tween != null and _height_tween.is_valid():
 		_height_tween.kill()
@@ -748,6 +973,16 @@ func _apply_responsive_layout() -> void:
 		_daynight_button.offset_top    = float(margin)
 		_daynight_button.offset_bottom = float(icon_sz) + float(margin)
 
+	# Help icon — top-left corner overlay, same scale as day/night button.
+	if _help_button != null:
+		var icon_sz := int(clampf(56.0 * _ui_scale, 48.0, 72.0))
+		var margin  := int(clampf(12.0 * _ui_scale, 8.0, 18.0))
+		_help_button.offset_left   = float(margin)
+		_help_button.offset_right  = float(icon_sz) + float(margin)
+		_help_button.offset_top    = float(margin)
+		_help_button.offset_bottom = float(icon_sz) + float(margin)
+		_help_button.add_theme_font_size_override("font_size", int(icon_sz * 0.52))
+
 
 func _bottom_inset() -> int:
 	var vp := get_viewport().get_visible_rect().size
@@ -888,3 +1123,74 @@ func _update_play_button_style() -> void:
 		sb.set_corner_radius_all(16)
 		_play_button.add_theme_stylebox_override(state_name, sb)
 	_play_button.add_theme_color_override("font_color", Color.WHITE)
+
+
+# ---------------------------------------------------------------------------
+# Tab bar — Metronome | Tuner
+# ---------------------------------------------------------------------------
+func _build_tabs() -> void:
+	_tab_bar = HBoxContainer.new()
+	_tab_bar.alignment = BoxContainer.ALIGNMENT_CENTER
+	_tab_bar.add_theme_constant_override("separation", 4)
+	_tab_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_outer.add_child(_tab_bar)
+
+	_metronome_tab = _make_tab("Metronome")
+	_metronome_tab.pressed.connect(func(): _set_mode(0))
+	_tab_bar.add_child(_metronome_tab)
+
+	_tuner_tab = _make_tab("Tuner")
+	_tuner_tab.pressed.connect(func(): _set_mode(1))
+	_tab_bar.add_child(_tuner_tab)
+
+	_update_tab_styles()
+
+
+func _make_tab(text: String) -> Button:
+	var btn := Button.new()
+	btn.text = text
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.custom_minimum_size = Vector2(120, 36)
+	btn.add_theme_font_size_override("font_size", 16)
+	return btn
+
+
+func _update_tab_styles() -> void:
+	for info: Array in [[_metronome_tab, 0], [_tuner_tab, 1]]:
+		var btn: Button = info[0]
+		var idx: int = info[1]
+		var active := (_mode == idx)
+		for state_name in ["normal", "hover", "pressed"]:
+			var sb := StyleBoxFlat.new()
+			sb.bg_color = ACCENT_COLOR if active else STEP_BTN_COLOR
+			sb.set_corner_radius_all(10)
+			btn.add_theme_stylebox_override(state_name, sb)
+		btn.add_theme_color_override("font_color", Color.WHITE if active else LABEL_COLOR)
+
+
+func _build_tuner_ui() -> void:
+	var tu: Control = load("res://tuner_ui.gd").new()
+	_tuner_ui = tu
+	tu.custom_minimum_size = Vector2(0, 280)
+	tu.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tu.visible = false
+	_outer.add_child(tu)
+
+
+func _set_mode(mode: int) -> void:
+	_mode = mode
+	_update_tab_styles()
+	_refresh_panel_height(true)
+	mode_changed.emit(mode)
+
+
+func get_tuner_ui() -> Control:
+	return _tuner_ui
+
+
+func force_paused() -> void:
+	if _is_playing:
+		_is_playing = false
+		_play_button.text = "▶  Play"
+		_update_play_button_style()
+		play_toggled.emit(false)

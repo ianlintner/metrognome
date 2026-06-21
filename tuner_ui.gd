@@ -147,8 +147,8 @@ func _draw_bar() -> void:
 	if not _has_signal:
 		return
 	# Needle: cents in [-50, 50] -> x across the bar.
-	var t := clamp(_cents / 50.0, -1.0, 1.0)
-	var nx := w * 0.5 + t * (w * 0.5)
-	var in_tune := abs(_cents) <= IN_TUNE_CENTS
-	var col := Color(0.3, 0.9, 0.4) if in_tune else Color(0.95, 0.65, 0.2)
+	var t: float = clampf(_cents / 50.0, -1.0, 1.0)
+	var nx: float = w * 0.5 + t * (w * 0.5)
+	var in_tune: bool = absf(_cents) <= IN_TUNE_CENTS
+	var col: Color = Color(0.3, 0.9, 0.4) if in_tune else Color(0.95, 0.65, 0.2)
 	_bar.draw_line(Vector2(nx, 2.0), Vector2(nx, h - 2.0), col, 4.0)
