@@ -111,6 +111,8 @@ var _celebrate_timer: float = 0.0
 var _arm_skeleton: Skeleton3D
 var _arm_bone_idx: int = -1
 var _tuner_sparkle: GPUParticles3D
+var _tuner_overlay: CanvasLayer
+var _tuner_ui: TunerUI
 
 
 func _is_clear(x: float, z: float, radius: float) -> bool:
@@ -1232,10 +1234,32 @@ func _setup_tuner() -> void:
 	_tuner.pitch_detected.connect(_on_tuner_pitch)
 	_tuner.signal_lost.connect(_on_tuner_signal_lost)
 	_setup_tuner_sparkle()
+	_setup_tuner_overlay()
 	_probe_arm_bone()
-	var tu := _ui_manager.get_tuner_ui() as TunerUI
-	if tu != null:
-		tu.instrument_changed.connect(_on_tuner_instrument_changed)
+	_tuner_ui.instrument_changed.connect(_on_tuner_instrument_changed)
+
+
+func _setup_tuner_overlay() -> void:
+	_tuner_overlay = CanvasLayer.new()
+	_tuner_overlay.layer = 2
+	_tuner_overlay.name = "TunerOverlay"
+	add_child(_tuner_overlay)
+
+	# Center-top anchor so TunerUI floats above the 3D scene.
+	var anchor := Control.new()
+	anchor.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	anchor.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	anchor.offset_bottom = 220.0
+	_tuner_overlay.add_child(anchor)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	anchor.add_child(center)
+
+	_tuner_ui = TunerUI.new()
+	center.add_child(_tuner_ui)
+	_tuner_overlay.visible = false
 
 
 func _setup_tuner_sparkle() -> void:
@@ -1301,14 +1325,13 @@ func _enter_tuner_mode() -> void:
 		for ap in _anim_players:
 			ap.pause()
 	_env.adjustment_saturation = TUNER_BASE_SATURATION
+	_tuner_overlay.visible = true
 	_tuner.set_candidates([])
 	_tuner.start()
 	var ok: bool = true
 	if OS.get_name() == "Android":
 		ok = OS.request_permission("RECORD_AUDIO")
-	var tu := _ui_manager.get_tuner_ui() as TunerUI
-	if tu != null:
-		tu.set_mic_available(ok)
+	_tuner_ui.set_mic_available(ok)
 
 
 func _exit_tuner_mode() -> void:
@@ -1317,6 +1340,7 @@ func _exit_tuner_mode() -> void:
 	_tuner_celebrated = false
 	_tuner.stop()
 	_reset_gnome_pose()
+	_tuner_overlay.visible = false
 	_env.adjustment_saturation = TUNER_FULL_SATURATION
 
 
@@ -1329,18 +1353,14 @@ func _on_tuner_pitch(frequency: float, note_name: String, cents: float, _clarity
 		return
 	_tuner_has_signal = true
 	_tuner_cents = cents
-	var tu := _ui_manager.get_tuner_ui() as TunerUI
-	if tu != null:
-		tu.set_reading(note_name, cents, frequency)
+	_tuner_ui.set_reading(note_name, cents, frequency)
 
 
 func _on_tuner_signal_lost() -> void:
 	if not _tuner_mode:
 		return
 	_tuner_has_signal = false
-	var tu := _ui_manager.get_tuner_ui() as TunerUI
-	if tu != null:
-		tu.clear_reading()
+	_tuner_ui.clear_reading()
 
 
 func _process_tuner(delta: float) -> void:
