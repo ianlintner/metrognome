@@ -88,7 +88,6 @@ var _ui_scale: float = 1.0
 var _tab_bar: HBoxContainer
 var _metronome_tab: Button
 var _tuner_tab: Button
-var _tuner_ui: Control  # TunerUI instance
 var _mode: int = 0  # 0 = metronome, 1 = tuner
 
 
@@ -128,7 +127,7 @@ func _ready() -> void:
 	_build_help_button()       # ? icon pinned to top-left corner (reuses _icon_layer_overlay)
 	_build_tap_overlay()       # full-screen tap tempo mode (layer 2)
 	_build_help_modal()        # full-screen help modal (layer 3)
-	_build_tuner_ui()          # bottom tuner meter, hidden until Tuner tab
+
 
 	_create_beat_dots(4)
 	_update_play_button_style()
@@ -757,12 +756,9 @@ func _toggle_drawer() -> void:
 
 
 func _refresh_panel_height(animate: bool) -> void:
-	# Set visibility first so minimum-size queries are accurate.
 	var is_metro := (_mode == 0)
 	_drawer.visible = is_metro and _drawer_open
 	_bar.visible = is_metro
-	if _tuner_ui != null:
-		_tuner_ui.visible = not is_metro
 
 	var inset := _bottom_inset()
 	var v_pad := int(14.0 * _ui_scale)
@@ -775,8 +771,8 @@ func _refresh_panel_height(animate: bool) -> void:
 		if _drawer_open:
 			total += _drawer.get_combined_minimum_size().y + sep
 	else:
-		var tu_h: float = (_tuner_ui.custom_minimum_size.y if _tuner_ui != null else 280.0)
-		total = tab_h + sep + tu_h + v_pad * 2.0 + inset
+		# Tuner mode: show only the tab strip — the floating overlay provides the UI.
+		total = tab_h + v_pad * 2.0 + inset
 
 	if _height_tween != null and _height_tween.is_valid():
 		_height_tween.kill()
@@ -1168,15 +1164,6 @@ func _update_tab_styles() -> void:
 		btn.add_theme_color_override("font_color", Color.WHITE if active else LABEL_COLOR)
 
 
-func _build_tuner_ui() -> void:
-	var tu: Control = load("res://tuner_ui.gd").new()
-	_tuner_ui = tu
-	tu.custom_minimum_size = Vector2(0, 280)
-	tu.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	tu.visible = false
-	_outer.add_child(tu)
-
-
 func _set_mode(mode: int) -> void:
 	_mode = mode
 	_update_tab_styles()
@@ -1184,8 +1171,10 @@ func _set_mode(mode: int) -> void:
 	mode_changed.emit(mode)
 
 
+# Stub retained for compatibility until Task C removes the call from main.gd.
+# TunerUI is no longer owned by UIManager; it lives on a CanvasLayer in main.gd.
 func get_tuner_ui() -> Control:
-	return _tuner_ui
+	return null
 
 
 func force_paused() -> void:
