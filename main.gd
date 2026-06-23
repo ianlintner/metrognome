@@ -1406,6 +1406,8 @@ func _rebuild_tuner_gnome_line(midis: Array) -> void:
 		lbl.text = _midi_note_name(midis[i]) if midis.size() > 0 else "♪"
 		lbl.font_size = 48
 		lbl.modulate = Color.WHITE
+		lbl.outline_size = 8
+		lbl.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
 		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		lbl.position = Vector3(0, -0.5, 0)
 		lbl.no_depth_test = true
