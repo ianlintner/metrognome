@@ -1454,6 +1454,37 @@ func _on_tuner_pitch(frequency: float, note_name: String, cents: float, _clarity
 	_tuner_has_signal = true
 	_tuner_cents = cents
 	_tuner_ui.set_reading(note_name, cents, frequency)
+	_auto_highlight_tuner_gnome(frequency)
+
+
+func _auto_highlight_tuner_gnome(frequency: float) -> void:
+	if _tuner_gnomes.is_empty() or _tuner_locked_idx >= 0:
+		# Locked: just refresh highlights so green follows lock.
+		_update_tuner_gnome_highlights()
+		return
+	# No lock: find the gnome whose MIDI note is closest in frequency.
+	var best_idx: int = 0
+	var best_diff: float = 999999.0
+	for i in _tuner_gnome_midis.size():
+		var midi: int = _tuner_gnome_midis[i]
+		var ref_freq: float = 440.0 * pow(2.0, (midi - 69) / 12.0)
+		var diff: float = absf(frequency - ref_freq)
+		if diff < best_diff:
+			best_diff = diff
+			best_idx = i
+	# Highlight closest gnome without locking — use a temporary tint.
+	for i in _tuner_gnomes.size():
+		var lbl: Label3D = null
+		for child in _tuner_gnomes[i].get_children():
+			if child is Label3D:
+				lbl = child as Label3D
+				break
+		if lbl != null:
+			if i == best_idx:
+				var in_tune: bool = absf(_tuner_cents) <= TUNER_IN_TUNE_CENTS
+				lbl.modulate = TUNER_ACCENT_COLOR if in_tune else Color(1.0, 0.8, 0.2)
+			else:
+				lbl.modulate = Color.WHITE
 
 
 func _on_tuner_signal_lost() -> void:
