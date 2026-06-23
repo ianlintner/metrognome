@@ -21,6 +21,10 @@ const TUNER_BASE_SATURATION := 0.3   # desaturated (no signal)
 const TUNER_FULL_SATURATION := 1.15  # normal scene saturation
 const TUNER_IN_TUNE_CENTS := 5.0
 const TUNER_MAX_LEAN := 0.25         # radians of body lean
+const TUNER_NOTE_NAMES := ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
+const TUNER_GNOME_Z := -3.5   # behind metronome line
+const TUNER_GNOME_Y := 0.0
+const TUNER_ACCENT_COLOR := Color(0.3, 0.9, 0.4)   # green = locked/in-tune
 
 # Character catalog. Every entry is a Meshy biped sharing the same rig, so the
 # arms-down hop technique applies uniformly. Add a character = add a row here.
@@ -113,6 +117,9 @@ var _arm_bone_idx: int = -1
 var _tuner_sparkle: GPUParticles3D
 var _tuner_overlay: CanvasLayer
 var _tuner_ui: TunerUI
+var _tuner_gnomes: Array[GnomePulse] = []
+var _tuner_gnome_midis: Array = []
+var _tuner_locked_idx: int = -1
 
 
 func _is_clear(x: float, z: float, radius: float) -> bool:
@@ -1328,6 +1335,10 @@ func _enter_tuner_mode() -> void:
 	_tuner_overlay.visible = true
 	_tuner.set_candidates([])
 	_tuner.start()
+	# Hide metronome gnomes and show tuner gnome line
+	for g in _gnomes:
+		g.visible = false
+	_rebuild_tuner_gnome_line(_tuner_gnome_midis)
 	var ok: bool = true
 	if OS.get_name() == "Android":
 		ok = OS.request_permission("RECORD_AUDIO")
@@ -1342,10 +1353,99 @@ func _exit_tuner_mode() -> void:
 	_reset_gnome_pose()
 	_tuner_overlay.visible = false
 	_env.adjustment_saturation = TUNER_FULL_SATURATION
+	# Remove tuner gnomes and restore metronome gnomes
+	for g in _tuner_gnomes:
+		g.queue_free()
+	_tuner_gnomes.clear()
+	for g in _gnomes:
+		g.visible = true
 
 
-func _on_tuner_instrument_changed(midis: Array) -> void:
-	_tuner.set_candidates(midis)
+func _on_tuner_instrument_changed(candidate_midis: Array) -> void:
+	_tuner.set_candidates(candidate_midis)
+	if _tuner_mode:
+		_rebuild_tuner_gnome_line(candidate_midis)
+
+
+func _midi_note_name(midi: int) -> String:
+	return TUNER_NOTE_NAMES[midi % 12]
+
+
+func _rebuild_tuner_gnome_line(midis: Array) -> void:
+	# Remove old tuner gnomes
+	for g in _tuner_gnomes:
+		g.queue_free()
+	_tuner_gnomes.clear()
+	_tuner_locked_idx = -1
+
+	_tuner_gnome_midis = midis.duplicate()
+	var count: int = midis.size() if midis.size() > 0 else 1
+	var char_data: Dictionary = CHARACTERS[_active_char]
+	var glb_path: String = char_data.model
+	var char_scale: float = char_data.scale
+
+	var total_width: float = (count - 1) * GNOME_SPACING
+	var start_x: float = -total_width * 0.5
+
+	for i in count:
+		var scene := load(glb_path) as PackedScene
+		if scene == null:
+			continue
+		var instance := scene.instantiate() as Node3D
+		var gp := GnomePulse.new()
+		gp.name = "TunerGnome%d" % i
+		add_child(gp)
+		instance.scale = Vector3.ONE * char_scale
+		gp.add_child(instance)
+		gp.position = Vector3(start_x + i * GNOME_SPACING, TUNER_GNOME_Y, TUNER_GNOME_Z)
+
+		# Billboard note label below gnome
+		var lbl := Label3D.new()
+		lbl.text = _midi_note_name(midis[i]) if midis.size() > 0 else "♪"
+		lbl.font_size = 48
+		lbl.modulate = Color.WHITE
+		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lbl.position = Vector3(0, -0.5, 0)
+		lbl.no_depth_test = true
+		gp.add_child(lbl)
+
+		# Clickable area for string selection
+		var area := Area3D.new()
+		area.name = "ClickArea"
+		var col := CollisionShape3D.new()
+		var cap := CapsuleShape3D.new()
+		cap.radius = 0.5
+		cap.height = 2.0
+		col.shape = cap
+		area.add_child(col)
+		gp.add_child(area)
+		var idx := i   # capture for lambda
+		area.input_event.connect(func(_cam, event, _pos, _norm, _idx):
+			if event is InputEventMouseButton and event.pressed:
+				_on_tuner_gnome_clicked(idx)
+		)
+
+		_tuner_gnomes.append(gp)
+
+
+func _on_tuner_gnome_clicked(idx: int) -> void:
+	_tuner_locked_idx = idx
+	_update_tuner_gnome_highlights()
+	if _tuner_gnome_midis.size() > 0 and idx < _tuner_gnome_midis.size():
+		_tuner.set_candidates([_tuner_gnome_midis[idx]])
+	else:
+		_tuner.set_candidates([])
+
+
+func _update_tuner_gnome_highlights() -> void:
+	for i in _tuner_gnomes.size():
+		var lbl: Label3D = null
+		for child in _tuner_gnomes[i].get_children():
+			if child is Label3D:
+				lbl = child
+				break
+		if lbl != null:
+			lbl.modulate = TUNER_ACCENT_COLOR if i == _tuner_locked_idx else Color.WHITE
 
 
 func _on_tuner_pitch(frequency: float, note_name: String, cents: float, _clarity: float) -> void:
