@@ -1399,6 +1399,7 @@ func _rebuild_tuner_gnome_line(midis: Array) -> void:
 		add_child(gp)
 		instance.scale = Vector3.ONE * char_scale
 		gp.add_child(instance)
+		instance.rotate_object_local(Vector3.UP, PI)
 		gp.position = Vector3(start_x + i * GNOME_SPACING, TUNER_GNOME_Y, TUNER_GNOME_Z)
 
 		# Billboard note label below gnome
