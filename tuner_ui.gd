@@ -31,9 +31,9 @@ var _has_signal := false
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	grow_vertical = Control.GROW_DIRECTION_BEGIN
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	custom_minimum_size = Vector2(360, 200)
+	size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	visible = false
 
 	var panel := Panel.new()
