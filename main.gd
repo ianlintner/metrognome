@@ -1256,7 +1256,8 @@ func _setup_tuner_overlay() -> void:
 	var anchor := Control.new()
 	anchor.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	anchor.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	anchor.offset_bottom = 220.0
+	anchor.offset_top = 8.0
+	anchor.offset_bottom = 288.0
 	_tuner_overlay.add_child(anchor)
 
 	var center := CenterContainer.new()
@@ -1333,6 +1334,7 @@ func _enter_tuner_mode() -> void:
 			ap.pause()
 	_env.adjustment_saturation = TUNER_BASE_SATURATION
 	_tuner_overlay.visible = true
+	_tuner_ui.visible = true
 	_tuner.set_candidates([])
 	_tuner.start()
 	# Hide metronome gnomes and show tuner gnome line

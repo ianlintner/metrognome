@@ -31,7 +31,7 @@ var _has_signal := false
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(360, 200)
+	custom_minimum_size = Vector2(360, 260)
 	size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	visible = false
