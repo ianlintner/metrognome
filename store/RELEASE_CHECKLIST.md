@@ -22,7 +22,7 @@ Source of truth: `assets/branding/` (regenerate with
 ## 2. App configuration — [done]
 
 - [done] Display name **"Metrognome"** (`config/name`; Android `package/name`)
-- [done] Version **1.1.2**, iOS build **8**, Android versionCode **6**
+- [done] Version **1.3.0**, iOS build **11**, Android versionCode **10**
 - [done] iOS `targeted_device_family=3` (iPhone + iPad — was mis‑set to iPad‑only)
 - [done] iOS `export_path` fixed (was pointing at an APK)
 - [done] iOS min version 14.0; Android `min_sdk=24`, `target_sdk=35` (Play 2025 requirement)
@@ -57,11 +57,20 @@ Source of truth: `assets/branding/` (regenerate with
 - [ ] **[you]** Age rating questionnaire → 4+ / Everyone
 
 ### Screenshots (capture from the running app)
-- [ ] **[you]** iPhone 6.9" (1320×2868) — at least 1, up to 10
+- [ ] **[you]** iPhone 6.9" (1320×2868) — at least 1, up to 10; capture all four time-of-day scenes
 - [ ] **[you]** iPad 13" (2064×2752) — required because the build is Universal
 - [ ] **[you]** Play phone screenshots — at least 2 (min 320px, max 3840px)
 - [ ] **[you]** Play **feature graphic** 1024×500 (required) — can reuse the gradient + gnome
 - [ ] **[you]** Optional 7"/10" tablet screenshots
+
+### What's new copy (for App Store release notes & Play "What's new")
+```
+• Tap Tempo — tap along to set the BPM instantly, no typing required
+• Four time-of-day scenes: dawn, dusk, and night join the daytime grove
+• Night sky now shows a glowing moon
+• Time-of-day icon in the top-right corner lets you cycle scenes any time
+• Scene auto-matches your device clock on launch
+```
 
 ## 6. Open product decisions
 
