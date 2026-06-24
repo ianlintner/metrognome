@@ -11,7 +11,7 @@ signal gate_changed(threshold: float)
 const IN_TUNE_CENTS := 5.0
 
 # Noise-gate slider range. DEFAULT_GATE must match Tuner.DEFAULT_GATE.
-const DEFAULT_GATE := 0.02
+const DEFAULT_GATE := 0.012
 const GATE_MAX := 0.1
 const GATE_STEP := 0.005
 const BAR_WIDTH := 320.0
@@ -19,7 +19,7 @@ const BAR_HEIGHT := 54.0
 
 # Visual smoothing: the needle eases toward the latest reading every frame
 # (60 fps) instead of snapping on each detection (~8 fps), so it never jumps.
-const NEEDLE_TAU := 0.08      # seconds; smaller = snappier, larger = smoother
+const NEEDLE_TAU := 0.12      # seconds; smaller = snappier, larger = smoother
 const LOCK_HOLD := 0.4        # seconds within the in-tune zone before we lock green
 # Panel width tracks the viewport so it's wider on wider screens.
 const PANEL_WIDTH_FRACTION := 0.5

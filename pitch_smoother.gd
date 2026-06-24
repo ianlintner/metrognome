@@ -17,7 +17,7 @@ extends RefCounted
 const NoteMath = preload("res://tuner.gd")
 
 const MEDIAN_WINDOW := 5
-const EMA_ALPHA := 0.55     # ~150 ms time constant at the 0.12 s push interval
+const EMA_ALPHA := 0.40     # ~235 ms time constant at the 0.12 s push interval
 const COMMIT_FRAMES := 3    # consecutive pushes a new note must win before it sticks
 
 const _UNSET := -9999

@@ -22,7 +22,7 @@ const DETECT_INTERVAL := 0.12  # seconds between detection passes
 # Noise gate: the mic is treated as silent until its RMS amplitude exceeds the
 # threshold, so room tone / handling noise don't drive the needle. The gate
 # closes at a fraction of the open level (hysteresis) to avoid chattering.
-const DEFAULT_GATE := 0.02
+const DEFAULT_GATE := 0.012
 const GATE_HYSTERESIS := 0.6
 
 const NOTE_NAMES := ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
