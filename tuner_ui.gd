@@ -6,8 +6,14 @@ extends Control
 # preset selector. Shown/hidden by UIManager when the Tuner tab is active.
 
 signal instrument_changed(candidate_midis: Array)
+signal gate_changed(threshold: float)
 
 const IN_TUNE_CENTS := 5.0
+
+# Noise-gate slider range. DEFAULT_GATE must match Tuner.DEFAULT_GATE.
+const DEFAULT_GATE := 0.02
+const GATE_MAX := 0.1
+const GATE_STEP := 0.005
 const BAR_WIDTH := 320.0
 const BAR_HEIGHT := 54.0
 
@@ -19,7 +25,7 @@ const LOCK_HOLD := 0.4        # seconds within the in-tune zone before we lock g
 const PANEL_WIDTH_FRACTION := 0.5
 const PANEL_WIDTH_MIN := 360.0
 const PANEL_WIDTH_MAX := 720.0
-const PANEL_HEIGHT := 260.0
+const PANEL_HEIGHT := 300.0
 
 # Instrument presets: name -> candidate midi note numbers ([] = chromatic).
 const PRESETS := [
@@ -34,6 +40,7 @@ var _note_label: Label
 var _freq_label: Label
 var _bar: Control
 var _preset_button: OptionButton
+var _gate_slider: HSlider
 var _permission_card: Control
 
 var _display_cents := 0.0    # animated needle position
@@ -101,7 +108,35 @@ func _ready() -> void:
 	_preset_button.item_selected.connect(_on_preset_selected)
 	col.add_child(_preset_button)
 
+	# Noise-gate sensitivity: drag right to require a louder signal (gates out
+	# more background noise); fully left disables the gate.
+	var gate_row := HBoxContainer.new()
+	gate_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	gate_row.add_theme_constant_override("separation", 8)
+	col.add_child(gate_row)
+
+	var gate_label := Label.new()
+	gate_label.text = "Gate"
+	gate_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.8))
+	gate_label.add_theme_font_size_override("font_size", 16)
+	gate_row.add_child(gate_label)
+
+	_gate_slider = HSlider.new()
+	_gate_slider.min_value = 0.0
+	_gate_slider.max_value = GATE_MAX
+	_gate_slider.step = GATE_STEP
+	_gate_slider.value = DEFAULT_GATE
+	_gate_slider.custom_minimum_size = Vector2(180, 0)
+	_gate_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_gate_slider.focus_mode = Control.FOCUS_NONE
+	_gate_slider.value_changed.connect(_on_gate_changed)
+	gate_row.add_child(_gate_slider)
+
 	_build_permission_card()
+
+
+func _on_gate_changed(value: float) -> void:
+	gate_changed.emit(value)
 
 
 func _build_permission_card() -> void:

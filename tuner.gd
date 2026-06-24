@@ -19,6 +19,12 @@ const WINDOW := 2048
 const CLARITY_THRESHOLD := 0.6
 const DETECT_INTERVAL := 0.12  # seconds between detection passes
 
+# Noise gate: the mic is treated as silent until its RMS amplitude exceeds the
+# threshold, so room tone / handling noise don't drive the needle. The gate
+# closes at a fraction of the open level (hysteresis) to avoid chattering.
+const DEFAULT_GATE := 0.02
+const GATE_HYSTERESIS := 0.6
+
 const NOTE_NAMES := ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
 var _player: AudioStreamPlayer
@@ -30,6 +36,8 @@ var _candidates: Array = []  # midi note numbers; empty = chromatic (all 12)
 var _had_signal := false
 var _detect_timer := 0.0
 var _smoother  # PitchSmoother, loaded at runtime to avoid a cyclic preload
+var _gate_threshold := DEFAULT_GATE
+var _gate_open := false
 
 
 # ---- pure note math (static, unit-tested in tests/test_tuner_notes.gd) ----
@@ -78,6 +86,7 @@ func start() -> void:
 	if _smoother == null:
 		_smoother = load("res://pitch_smoother.gd").new()
 	_smoother.reset()
+	_gate_open = false
 	_active = true
 
 func stop() -> void:
@@ -96,6 +105,18 @@ func is_active() -> bool:
 
 func set_candidates(midis: Array) -> void:
 	_candidates = midis
+
+# Adjustable noise-gate level (RMS amplitude). 0 disables gating entirely.
+func set_gate_threshold(value: float) -> void:
+	_gate_threshold = maxf(0.0, value)
+
+func _rms(buf: PackedFloat32Array) -> float:
+	if buf.is_empty():
+		return 0.0
+	var sum := 0.0
+	for s in buf:
+		sum += s * s
+	return sqrt(sum / float(buf.size()))
 
 func _ensure_bus() -> void:
 	_bus_idx = AudioServer.get_bus_index(BUS_NAME)
@@ -130,6 +151,21 @@ func _process(delta: float) -> void:
 	_detect_timer = 0.0
 
 	if _window.size() < WINDOW:
+		return
+
+	# Noise gate: skip detection (and report silence) until the mic is loud
+	# enough. Hysteresis — once open, stay open until level drops below a
+	# fraction of the threshold — keeps the gate from flickering at the edge.
+	var level: float = _rms(_window)
+	var gate_level: float = _gate_threshold * GATE_HYSTERESIS if _gate_open else _gate_threshold
+	_gate_open = level >= gate_level
+	if not _gate_open:
+		_window.clear()
+		if _had_signal:
+			_had_signal = false
+			if _smoother != null:
+				_smoother.reset()
+			signal_lost.emit()
 		return
 
 	var sr := float(AudioServer.get_mix_rate())

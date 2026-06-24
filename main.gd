@@ -1244,6 +1244,7 @@ func _setup_tuner() -> void:
 	_setup_tuner_overlay()
 	_probe_arm_bone()
 	_tuner_ui.instrument_changed.connect(_on_tuner_instrument_changed)
+	_tuner_ui.gate_changed.connect(_tuner.set_gate_threshold)
 
 
 func _setup_tuner_overlay() -> void:
@@ -1257,7 +1258,7 @@ func _setup_tuner_overlay() -> void:
 	anchor.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	anchor.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	anchor.offset_top = 8.0
-	anchor.offset_bottom = 288.0
+	anchor.offset_bottom = 328.0
 	_tuner_overlay.add_child(anchor)
 
 	var center := CenterContainer.new()
