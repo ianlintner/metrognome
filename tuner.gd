@@ -29,6 +29,7 @@ var _active := false
 var _candidates: Array = []  # midi note numbers; empty = chromatic (all 12)
 var _had_signal := false
 var _detect_timer := 0.0
+var _smoother  # PitchSmoother, loaded at runtime to avoid a cyclic preload
 
 
 # ---- pure note math (static, unit-tested in tests/test_tuner_notes.gd) ----
@@ -74,6 +75,9 @@ func start() -> void:
 	_window.clear()
 	_had_signal = false
 	_detect_timer = 0.0
+	if _smoother == null:
+		_smoother = load("res://pitch_smoother.gd").new()
+	_smoother.reset()
 	_active = true
 
 func stop() -> void:
@@ -83,6 +87,8 @@ func stop() -> void:
 		_player.stop()
 	_window.clear()
 	_had_signal = false
+	if _smoother != null:
+		_smoother.reset()
 	_active = false
 
 func is_active() -> bool:
@@ -133,9 +139,12 @@ func _process(delta: float) -> void:
 	if result.clarity < CLARITY_THRESHOLD or result.frequency <= 0.0:
 		if _had_signal:
 			_had_signal = false
+			if _smoother != null:
+				_smoother.reset()
 			signal_lost.emit()
 		return
 
 	_had_signal = true
-	var note := nearest_note(result.frequency, _candidates)
-	pitch_detected.emit(result.frequency, String(note.name), float(note.cents), float(result.clarity))
+	# Hand the raw estimate to the smoother; it returns a stable, committed reading.
+	var r: Dictionary = _smoother.push(result.frequency, float(result.clarity), _candidates)
+	pitch_detected.emit(float(r.freq), String(r.name), float(r.cents), float(result.clarity))
