@@ -1,5 +1,8 @@
 extends Node3D
 
+const Tuner = preload("res://tuner.gd")
+const TunerUI = preload("res://tuner_ui.gd")
+
 const GNOME_SPACING := 1.8
 const SPAWN_OPOSSUM := false  # roaming opossum was an animation MVP test; off for now
 
@@ -13,6 +16,15 @@ const ARM_BONES := [              # bones we neutralise to an arms-down pose
 	"LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
 	"RightShoulder", "RightArm", "RightForeArm", "RightHand",
 ]
+
+const TUNER_BASE_SATURATION := 0.3   # desaturated (no signal)
+const TUNER_FULL_SATURATION := 1.15  # normal scene saturation
+const TUNER_IN_TUNE_CENTS := 5.0
+const TUNER_MAX_LEAN := 0.25         # radians of body lean
+const TUNER_NOTE_NAMES := ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
+const TUNER_GNOME_Z := -3.5   # behind metronome line
+const TUNER_GNOME_Y := 0.0
+const TUNER_ACCENT_COLOR := Color(0.3, 0.9, 0.4)   # green = locked/in-tune
 
 # Character catalog. Every entry is a Meshy biped sharing the same rig, so the
 # arms-down hop technique applies uniformly. Add a character = add a row here.
@@ -93,6 +105,22 @@ var _opossum_target: Vector3
 var _opossum_phase: float = 0.0
 var _opossum_rng := RandomNumberGenerator.new()
 
+# --- Tuner ---
+var _tuner: Tuner
+var _tuner_mode: bool = false
+var _tuner_has_signal: bool = false
+var _tuner_cents: float = 0.0
+var _tuner_celebrated: bool = false
+var _celebrate_timer: float = 0.0
+var _arm_skeleton: Skeleton3D
+var _arm_bone_idx: int = -1
+var _tuner_sparkle: GPUParticles3D
+var _tuner_overlay: CanvasLayer
+var _tuner_ui: TunerUI
+var _tuner_gnomes: Array[GnomePulse] = []
+var _tuner_gnome_midis: Array = []
+var _tuner_locked_idx: int = -1
+
 
 func _is_clear(x: float, z: float, radius: float) -> bool:
 	var p := Vector2(x, z)
@@ -114,6 +142,7 @@ func _ready() -> void:
 	_setup_audio()
 	_setup_metronome()
 	_setup_ui()
+	_setup_tuner()
 	_setup_camera()
 	_populate_character_selector()
 	_apply_character_sound()  # start on the active character's signature sound
@@ -992,6 +1021,9 @@ func _pick_opossum_target() -> void:
 
 
 func _process(delta: float) -> void:
+	if _tuner_mode:
+		_process_tuner(delta)
+
 	if _opossum == null or _metronome == null or not _metronome.is_playing():
 		return
 
@@ -1073,6 +1105,7 @@ func _setup_ui() -> void:
 	_ui_manager.play_toggled.connect(_on_ui_play_toggled)
 	_ui_manager.character_changed.connect(set_active_character)
 	_ui_manager.day_night_changed.connect(_apply_time_of_day)
+	_ui_manager.mode_changed.connect(_on_ui_mode_changed)
 	_metronome.tick.connect(_on_metronome_tick)
 
 
@@ -1196,3 +1229,320 @@ func _frame_camera() -> void:
 	_camera.position = CAM_TARGET + _cam_dir * dist
 	_camera.look_at(CAM_TARGET)
 	_orient_gnomes_to_camera()
+
+
+# ---------------------------------------------------------------------------
+# Tuner
+# ---------------------------------------------------------------------------
+func _setup_tuner() -> void:
+	_tuner = Tuner.new()
+	_tuner.name = "Tuner"
+	add_child(_tuner)
+	_tuner.pitch_detected.connect(_on_tuner_pitch)
+	_tuner.signal_lost.connect(_on_tuner_signal_lost)
+	_setup_tuner_sparkle()
+	_setup_tuner_overlay()
+	_probe_arm_bone()
+	_tuner_ui.instrument_changed.connect(_on_tuner_instrument_changed)
+	_tuner_ui.gate_changed.connect(_tuner.set_gate_threshold)
+
+
+func _setup_tuner_overlay() -> void:
+	_tuner_overlay = CanvasLayer.new()
+	_tuner_overlay.layer = 2
+	_tuner_overlay.name = "TunerOverlay"
+	add_child(_tuner_overlay)
+
+	# Center-top anchor so TunerUI floats above the 3D scene.
+	var anchor := Control.new()
+	anchor.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	anchor.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	anchor.offset_top = 8.0
+	anchor.offset_bottom = 328.0
+	_tuner_overlay.add_child(anchor)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	anchor.add_child(center)
+
+	_tuner_ui = TunerUI.new()
+	center.add_child(_tuner_ui)
+	_tuner_overlay.visible = false
+
+
+func _setup_tuner_sparkle() -> void:
+	_tuner_sparkle = GPUParticles3D.new()
+	_tuner_sparkle.emitting = false
+	_tuner_sparkle.one_shot = true
+	_tuner_sparkle.explosiveness = 0.9
+	_tuner_sparkle.amount = 32
+	_tuner_sparkle.lifetime = 1.2
+	_tuner_sparkle.position = Vector3(0, 2.5, 0)
+	var mat := ParticleProcessMaterial.new()
+	mat.direction = Vector3(0, 1, 0)
+	mat.spread = 90.0
+	mat.initial_velocity_min = 2.0
+	mat.initial_velocity_max = 5.0
+	mat.gravity = Vector3(0, -2.0, 0)
+	mat.color = Color(0.9, 0.8, 0.2)
+	_tuner_sparkle.process_material = mat
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.04
+	mesh.height = 0.08
+	_tuner_sparkle.draw_pass_1 = mesh
+	add_child(_tuner_sparkle)
+
+
+func _probe_arm_bone() -> void:
+	if _gnomes.is_empty():
+		return
+	var skel := _find_skeleton_in(_gnomes[0])
+	if skel == null:
+		return
+	# Prefer "RightArm" for the tuner pointing gesture.
+	for preferred: String in ["RightArm", "RightShoulder", "LeftArm"]:
+		for i in skel.get_bone_count():
+			if skel.get_bone_name(i) == preferred:
+				_arm_skeleton = skel
+				_arm_bone_idx = i
+				return
+
+
+func _find_skeleton_in(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node as Skeleton3D
+	for child in node.get_children():
+		var result := _find_skeleton_in(child)
+		if result != null:
+			return result
+	return null
+
+
+func _on_ui_mode_changed(mode: int) -> void:
+	if mode == 1:
+		_enter_tuner_mode()
+	else:
+		_exit_tuner_mode()
+
+
+func _enter_tuner_mode() -> void:
+	_tuner_mode = true
+	if _metronome.is_playing():
+		_metronome.pause()
+		_ui_manager.force_paused()
+		for ap in _anim_players:
+			ap.pause()
+	_env.adjustment_saturation = TUNER_BASE_SATURATION
+	_tuner_overlay.visible = true
+	_tuner_ui.visible = true
+	_tuner.set_candidates([])
+	_tuner.start()
+	# Hide metronome gnomes and show tuner gnome line
+	for g in _gnomes:
+		g.visible = false
+	_rebuild_tuner_gnome_line(_tuner_gnome_midis)
+	var ok: bool = true
+	if OS.get_name() == "Android":
+		ok = OS.request_permission("RECORD_AUDIO")
+	_tuner_ui.set_mic_available(ok)
+
+
+func _exit_tuner_mode() -> void:
+	_tuner_mode = false
+	_tuner_has_signal = false
+	_tuner_celebrated = false
+	_tuner.stop()
+	_reset_gnome_pose()
+	_tuner_overlay.visible = false
+	_env.adjustment_saturation = TUNER_FULL_SATURATION
+	# Remove tuner gnomes and restore metronome gnomes
+	for g in _tuner_gnomes:
+		g.queue_free()
+	_tuner_gnomes.clear()
+	for g in _gnomes:
+		g.visible = true
+
+
+func _on_tuner_instrument_changed(candidate_midis: Array) -> void:
+	_tuner.set_candidates(candidate_midis)
+	if _tuner_mode:
+		_rebuild_tuner_gnome_line(candidate_midis)
+
+
+func _midi_note_name(midi: int) -> String:
+	return TUNER_NOTE_NAMES[midi % 12]
+
+
+func _rebuild_tuner_gnome_line(midis: Array) -> void:
+	# Remove old tuner gnomes
+	for g in _tuner_gnomes:
+		g.queue_free()
+	_tuner_gnomes.clear()
+	_tuner_locked_idx = -1
+
+	_tuner_gnome_midis = midis.duplicate()
+	var count: int = midis.size() if midis.size() > 0 else 1
+	var char_data: Dictionary = CHARACTERS[_active_char]
+	var glb_path: String = char_data.model
+	var char_scale: float = char_data.scale
+
+	var total_width: float = (count - 1) * GNOME_SPACING
+	var start_x: float = -total_width * 0.5
+
+	for i in count:
+		var scene := load(glb_path) as PackedScene
+		if scene == null:
+			continue
+		var instance := scene.instantiate() as Node3D
+		var gp := GnomePulse.new()
+		gp.name = "TunerGnome%d" % i
+		add_child(gp)
+		instance.scale = Vector3.ONE * char_scale
+		gp.add_child(instance)
+		instance.rotate_object_local(Vector3.UP, PI)
+		gp.position = Vector3(start_x + i * GNOME_SPACING, TUNER_GNOME_Y, TUNER_GNOME_Z)
+
+		# Billboard note label below gnome
+		var lbl := Label3D.new()
+		lbl.text = _midi_note_name(midis[i]) if midis.size() > 0 else "♪"
+		lbl.font_size = 48
+		lbl.modulate = Color.WHITE
+		lbl.outline_size = 8
+		lbl.outline_modulate = Color(0.0, 0.0, 0.0, 0.85)
+		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lbl.position = Vector3(0, -0.5, 0)
+		lbl.no_depth_test = true
+		gp.add_child(lbl)
+
+		# Clickable area for string selection
+		var area := Area3D.new()
+		area.name = "ClickArea"
+		var col := CollisionShape3D.new()
+		var cap := CapsuleShape3D.new()
+		cap.radius = 0.5
+		cap.height = 2.0
+		col.shape = cap
+		area.add_child(col)
+		gp.add_child(area)
+		var idx := i   # capture for lambda
+		area.input_event.connect(func(_cam, event, _pos, _norm, _idx):
+			if event is InputEventMouseButton and event.pressed:
+				_on_tuner_gnome_clicked(idx)
+		)
+
+		_tuner_gnomes.append(gp)
+
+
+func _on_tuner_gnome_clicked(idx: int) -> void:
+	_tuner_locked_idx = idx
+	_update_tuner_gnome_highlights()
+	if _tuner_gnome_midis.size() > 0 and idx < _tuner_gnome_midis.size():
+		_tuner.set_candidates([_tuner_gnome_midis[idx]])
+	else:
+		_tuner.set_candidates([])
+
+
+func _update_tuner_gnome_highlights() -> void:
+	for i in _tuner_gnomes.size():
+		var lbl: Label3D = null
+		for child in _tuner_gnomes[i].get_children():
+			if child is Label3D:
+				lbl = child
+				break
+		if lbl != null:
+			lbl.modulate = TUNER_ACCENT_COLOR if i == _tuner_locked_idx else Color.WHITE
+
+
+func _on_tuner_pitch(frequency: float, note_name: String, cents: float, _clarity: float) -> void:
+	if not _tuner_mode:
+		return
+	_tuner_has_signal = true
+	_tuner_cents = cents
+	_tuner_ui.set_reading(note_name, cents, frequency)
+	_auto_highlight_tuner_gnome(frequency)
+
+
+func _auto_highlight_tuner_gnome(frequency: float) -> void:
+	if _tuner_gnomes.is_empty() or _tuner_locked_idx >= 0:
+		# Locked: just refresh highlights so green follows lock.
+		_update_tuner_gnome_highlights()
+		return
+	# No lock: find the gnome whose MIDI note is closest in frequency.
+	var best_idx: int = 0
+	var best_diff: float = 999999.0
+	for i in _tuner_gnome_midis.size():
+		var midi: int = _tuner_gnome_midis[i]
+		var ref_freq: float = 440.0 * pow(2.0, (midi - 69) / 12.0)
+		var diff: float = absf(frequency - ref_freq)
+		if diff < best_diff:
+			best_diff = diff
+			best_idx = i
+	# Highlight closest gnome without locking — use a temporary tint.
+	for i in _tuner_gnomes.size():
+		var lbl: Label3D = null
+		for child in _tuner_gnomes[i].get_children():
+			if child is Label3D:
+				lbl = child as Label3D
+				break
+		if lbl != null:
+			if i == best_idx:
+				var in_tune: bool = absf(_tuner_cents) <= TUNER_IN_TUNE_CENTS
+				lbl.modulate = TUNER_ACCENT_COLOR if in_tune else Color(1.0, 0.8, 0.2)
+			else:
+				lbl.modulate = Color.WHITE
+
+
+func _on_tuner_signal_lost() -> void:
+	if not _tuner_mode:
+		return
+	_tuner_has_signal = false
+	_tuner_ui.clear_reading()
+
+
+func _process_tuner(delta: float) -> void:
+	if _celebrate_timer > 0.0:
+		_celebrate_timer -= delta
+
+	var in_tune := _tuner_has_signal and absf(_tuner_cents) <= TUNER_IN_TUNE_CENTS
+
+	if in_tune and not _tuner_celebrated:
+		_tuner_celebrated = true
+		_celebrate_timer = 1.0
+		if _tuner_sparkle != null:
+			_tuner_sparkle.restart()
+	elif not in_tune:
+		_tuner_celebrated = false
+
+	var target_sat: float
+	if not _tuner_has_signal:
+		target_sat = TUNER_BASE_SATURATION
+	elif in_tune:
+		target_sat = TUNER_FULL_SATURATION + (0.35 if _celebrate_timer > 0.5 else 0.0)
+	else:
+		var t: float = clampf(1.0 - absf(_tuner_cents) / 50.0, 0.0, 1.0)
+		target_sat = lerpf(TUNER_BASE_SATURATION, TUNER_FULL_SATURATION, t * t)
+	_env.adjustment_saturation = lerpf(_env.adjustment_saturation, target_sat, 0.12)
+
+	_apply_gnome_tuning(_tuner_cents if _tuner_has_signal else 0.0)
+
+
+func _apply_gnome_tuning(cents: float) -> void:
+	if _gnomes.is_empty():
+		return
+	var gnome := _gnomes[0]
+	# Sharp (cents > 0) → lean toward "tune down" (negative Z lean)
+	var lean: float = clampf(cents / 50.0, -1.0, 1.0) * -TUNER_MAX_LEAN
+	gnome.rotation.z = lerpf(gnome.rotation.z, lean, 0.1)
+	if _arm_skeleton != null and _arm_bone_idx >= 0:
+		# Sharp → arm points down (negative X rotation); flat → arm points up
+		var arm_angle: float = clampf(-cents / 50.0, -1.0, 1.0) * 0.6
+		_arm_skeleton.set_bone_pose_rotation(_arm_bone_idx, Quaternion(Vector3.RIGHT, arm_angle))
+
+
+func _reset_gnome_pose() -> void:
+	if _gnomes.is_empty():
+		return
+	_gnomes[0].rotation.z = 0.0
+	if _arm_skeleton != null and _arm_bone_idx >= 0:
+		_arm_skeleton.set_bone_pose_rotation(_arm_bone_idx, Quaternion.IDENTITY)
