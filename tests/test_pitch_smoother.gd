@@ -63,9 +63,11 @@ func _test_commitment_delay() -> void:
 	# Now feed D3 (146.83 Hz). One push must NOT have switched yet.
 	var first: Dictionary = s.push(146.83, 1.0, [])
 	_ok(String(first.name) == "A2", "one new-note push doesn't switch (got %s)" % first.name)
-	# Keep feeding D3 until median+commitment catch up.
+	# Keep feeding D3 until median+commitment catch up. Pushes arrive every
+	# 0.08 s, so 12 pushes ≈ 1 s of sustained playing — same wall-clock
+	# commitment feel as the original 0.12 s cadence.
 	var last: Dictionary = first
-	for i in 8:
+	for i in 12:
 		last = s.push(146.83, 1.0, [])
 	_ok(String(last.name) == "D3", "sustained new note eventually commits (got %s)" % last.name)
 
