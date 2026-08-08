@@ -1,9 +1,9 @@
 # Privacy Policy — Metrognome
 
-_Last updated: 2026-06-04_
+_Last updated: 2026-08-07_
 
-Metrognome ("the app") is a metronome and rhythm‑practice toy published by
-Code Lintner. We respect your privacy.
+Metrognome ("the app") is a metronome, tuner, and rhythm‑practice toy published
+by Code Lintner. We respect your privacy.
 
 ## Data we collect
 
@@ -11,13 +11,18 @@ Code Lintner. We respect your privacy.
 information. The app:
 
 - Has **no account system** and no login.
-- Requests **no runtime permissions** (no microphone, camera, location,
-  contacts, or storage access).
+- Requests **microphone access only for the built‑in instrument tuner.** When
+  you open the Tuner tab, the app listens to live audio to detect the pitch
+  you're playing. That audio is analyzed entirely on your device, in memory,
+  in real time — it is **never recorded, saved, or transmitted anywhere**, and
+  is discarded immediately after each analysis pass. The microphone is off
+  whenever the Tuner tab isn't open. No other permissions are requested (no
+  camera, location, contacts, or storage access).
 - Makes **no network connections** — it runs fully offline.
 - Contains **no analytics, advertising, or third‑party tracking SDKs**.
 
-Any settings you change (tempo, time signature, sound, selected character) stay
-on your device and are never sent anywhere.
+Any settings you change (tempo, time signature, sound, selected character,
+tuner instrument preset) stay on your device and are never sent anywhere.
 
 ## Children
 
