@@ -36,7 +36,13 @@ const PRESETS := [
 	{"name": "Violin",   "midis": [55, 62, 69, 76]},           # G3 D4 A4 E5
 ]
 
+const COLOR_IN_TUNE := Color(0.3, 0.9, 0.4)
+const COLOR_OFF_TUNE := Color(0.95, 0.65, 0.2)
+const COLOR_INDICATOR_DIM := Color(0.45, 0.45, 0.55, 0.55)
+
 var _note_label: Label
+var _flat_label: Label
+var _sharp_label: Label
 var _freq_label: Label
 var _bar: Control
 var _preset_button: OptionButton
@@ -79,12 +85,33 @@ func _ready() -> void:
 	col.add_theme_constant_override("separation", 10)
 	margin.add_child(col)
 
+	# Note row: ♭ [note] ♯ — the relevant side brightens when the pitch is
+	# flat/sharp beyond the in-tune zone, telling the player which way to go.
+	var note_row := HBoxContainer.new()
+	note_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	note_row.add_theme_constant_override("separation", 22)
+	col.add_child(note_row)
+
+	_flat_label = Label.new()
+	_flat_label.text = "♭"
+	_flat_label.add_theme_color_override("font_color", COLOR_INDICATOR_DIM)
+	_flat_label.add_theme_font_size_override("font_size", 34)
+	_flat_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	note_row.add_child(_flat_label)
+
 	_note_label = Label.new()
 	_note_label.text = "--"
 	_note_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_note_label.add_theme_color_override("font_color", Color.WHITE)
 	_note_label.add_theme_font_size_override("font_size", 72)
-	col.add_child(_note_label)
+	note_row.add_child(_note_label)
+
+	_sharp_label = Label.new()
+	_sharp_label.text = "♯"
+	_sharp_label.add_theme_color_override("font_color", COLOR_INDICATOR_DIM)
+	_sharp_label.add_theme_font_size_override("font_size", 34)
+	_sharp_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	note_row.add_child(_sharp_label)
 
 	_bar = Control.new()
 	_bar.custom_minimum_size = Vector2(BAR_WIDTH, BAR_HEIGHT)
@@ -182,7 +209,14 @@ func _process(delta: float) -> void:
 
 	if _locked != was_locked:
 		_note_label.add_theme_color_override(
-			"font_color", Color(0.3, 0.9, 0.4) if _locked else Color.WHITE)
+			"font_color", COLOR_IN_TUNE if _locked else Color.WHITE)
+
+	# Flat/sharp hints follow the animated needle so they never disagree with it.
+	_flat_label.add_theme_color_override("font_color",
+		COLOR_OFF_TUNE if _display_cents < -IN_TUNE_CENTS else COLOR_INDICATOR_DIM)
+	_sharp_label.add_theme_color_override("font_color",
+		COLOR_OFF_TUNE if _display_cents > IN_TUNE_CENTS else COLOR_INDICATOR_DIM)
+
 	if absf(_display_cents - prev) > 0.02 or _locked != was_locked:
 		_bar.queue_redraw()
 
@@ -191,7 +225,10 @@ func set_reading(note_name: String, cents: float, frequency: float) -> void:
 	_has_signal = true
 	_target_cents = cents
 	_note_label.text = note_name
-	_freq_label.text = "%.1f Hz   %+d¢" % [frequency, int(round(cents))]
+	# Show where the committed note sits so the player knows what they're
+	# aiming for, not just how far off they are.
+	var target_hz: float = frequency / pow(2.0, cents / 1200.0)
+	_freq_label.text = "%.1f Hz → %.1f Hz   %+d¢" % [frequency, target_hz, int(round(cents))]
 
 
 func clear_reading() -> void:
@@ -202,6 +239,8 @@ func clear_reading() -> void:
 	_locked = false
 	_note_label.text = "--"
 	_note_label.add_theme_color_override("font_color", Color.WHITE)
+	_flat_label.add_theme_color_override("font_color", COLOR_INDICATOR_DIM)
+	_sharp_label.add_theme_color_override("font_color", COLOR_INDICATOR_DIM)
 	_freq_label.text = "listening…"
 	_bar.queue_redraw()
 
@@ -210,22 +249,44 @@ func set_mic_available(ok: bool) -> void:
 	_permission_card.visible = not ok
 
 
+func _cents_to_x(cents: float, w: float) -> float:
+	return w * 0.5 + clampf(cents / 50.0, -1.0, 1.0) * (w * 0.5)
+
+
 func _draw_bar() -> void:
 	var w := _bar.size.x
 	var h := _bar.size.y
-	var cy := h * 0.5
+	var cy := h * 0.5 - 4.0   # track sits slightly high; labels live below
 	# Track background.
 	_bar.draw_rect(Rect2(0, cy - 3, w, 6), Color(0.25, 0.25, 0.32))
 	# Center in-tune zone highlight.
 	var zone_w := w * (IN_TUNE_CENTS / 50.0)
 	_bar.draw_rect(Rect2(w * 0.5 - zone_w, cy - 12.0, zone_w * 2.0, 24.0), Color(0.3, 0.9, 0.4, 0.25))
+
+	# Scale: minor ticks every 10¢, labeled major ticks at ±25 / ±50.
+	var font := _bar.get_theme_default_font()
+	for c in [-40, -30, -20, -10, 10, 20, 30, 40]:
+		var mx := _cents_to_x(float(c), w)
+		_bar.draw_line(Vector2(mx, cy - 6.0), Vector2(mx, cy + 6.0), Color(0.4, 0.4, 0.5), 1.0)
+	for c in [-50, -25, 0, 25, 50]:
+		var tx := _cents_to_x(float(c), w)
+		if c != 0:
+			_bar.draw_line(Vector2(tx, cy - 9.0), Vector2(tx, cy + 9.0), Color(0.55, 0.55, 0.66), 1.5)
+		var label := str(c) if c <= 0 else "+" + str(c)
+		var lx: float = clampf(tx, 14.0, w - 14.0)
+		_bar.draw_string(font, Vector2(lx - 14.0, h - 1.0), label,
+			HORIZONTAL_ALIGNMENT_CENTER, 28.0, 11, Color(0.55, 0.55, 0.66))
+
 	# Center tick.
-	_bar.draw_line(Vector2(w * 0.5, 4.0), Vector2(w * 0.5, h - 4.0), Color(0.5, 0.9, 0.55), 2.0)
+	_bar.draw_line(Vector2(w * 0.5, 2.0), Vector2(w * 0.5, cy + 11.0), Color(0.5, 0.9, 0.55), 2.0)
 	if not _has_signal:
 		return
-	# Needle: animated cents in [-50, 50] -> x across the bar.
-	var t: float = clampf(_display_cents / 50.0, -1.0, 1.0)
-	var nx: float = w * 0.5 + t * (w * 0.5)
-	var in_tune: bool = absf(_display_cents) <= IN_TUNE_CENTS
-	var col: Color = Color(0.3, 0.9, 0.4) if in_tune else Color(0.95, 0.65, 0.2)
-	_bar.draw_line(Vector2(nx, 2.0), Vector2(nx, h - 2.0), col, 4.0)
+
+	# Needle: color blends toward green as the pitch closes in on the zone.
+	var nx := _cents_to_x(_display_cents, w)
+	var closeness: float = clampf((absf(_display_cents) - IN_TUNE_CENTS) / 20.0, 0.0, 1.0)
+	var col: Color = COLOR_IN_TUNE.lerp(COLOR_OFF_TUNE, closeness)
+	_bar.draw_line(Vector2(nx, 2.0), Vector2(nx, cy + 12.0), col, 4.0)
+	_bar.draw_colored_polygon(PackedVector2Array([
+		Vector2(nx - 5.0, 0.0), Vector2(nx + 5.0, 0.0), Vector2(nx, 7.0),
+	]), col)
