@@ -11,6 +11,7 @@ const SHOTS := [
 	{"f": "iphone-1-gnome-night", "w": 1284, "h": 2778, "char": 0, "night": true,  "play": true},
 	{"f": "iphone-2-frog-night",  "w": 1284, "h": 2778, "char": 1, "night": true,  "play": true},
 	{"f": "iphone-3-beaver-day",  "w": 1284, "h": 2778, "char": 2, "night": false, "play": true},
+	{"f": "iphone-4-tuner",       "w": 1284, "h": 2778, "char": 0, "night": true,  "play": false, "tuner": true},
 	# iPad 13" — 2064 x 2752
 	{"f": "ipad-1-gnome-night",   "w": 2064, "h": 2752, "char": 0, "night": true,  "play": true},
 	{"f": "ipad-2-frog-day",      "w": 2064, "h": 2752, "char": 1, "night": false, "play": true},
@@ -51,6 +52,19 @@ func _capture(c: Dictionary, out_dir: String) -> void:
 
 	# Let glow/fireflies/animation settle, then grab a frame.
 	await get_tree().create_timer(1.4).timeout
+
+	if bool(c.get("tuner", false)):
+		# Enter tuner mode, then kill the real mic capture and feed a
+		# synthetic in-tune reading — a real microphone has no guaranteed
+		# clean signal in an automated capture, and the store screenshot
+		# just needs to show the meter clearly, centered and locked green.
+		main._on_ui_mode_changed(1)
+		main._tuner.stop()
+		await get_tree().process_frame
+		main._tuner_ui.set_reading("A2", 1.0, 110.02)
+		for i in 30:
+			await get_tree().process_frame
+
 	await RenderingServer.frame_post_draw
 
 	var img := sv.get_texture().get_image()

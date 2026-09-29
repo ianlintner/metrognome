@@ -22,7 +22,7 @@ Source of truth: `assets/branding/` (regenerate with
 ## 2. App configuration — [done]
 
 - [done] Display name **"Metrognome"** (`config/name`; Android `package/name`)
-- [done] Version **1.3.0**, iOS build **11**, Android versionCode **10**
+- [done] Version **1.4.0**, iOS build **12**, Android versionCode **11**
 - [done] iOS `targeted_device_family=3` (iPhone + iPad — was mis‑set to iPad‑only)
 - [done] iOS `export_path` fixed (was pointing at an APK)
 - [done] iOS min version 14.0; Android `min_sdk=24`, `target_sdk=35` (Play 2025 requirement)
@@ -31,10 +31,18 @@ Source of truth: `assets/branding/` (regenerate with
 
 ## 3. Privacy & compliance — [done]
 
-- [done] iOS privacy manifest: **no data collected** (correct — app is fully offline)
-- [done] No runtime permissions; Android `permissions/internet=false`
-- [done] Privacy policy drafted: `store/privacy-policy.md`
-- [done] Privacy policy hosted at **https://cat-herding.net/metrognome/privacy** (portfolio site)
+- [done] iOS privacy manifest: **no data collected** (audio for the tuner is
+  processed live, on-device, and never stored/transmitted — see below)
+- [done] **Microphone permission requested** (tuner feature only) — Android
+  `permissions/record_audio=true`; iOS `privacy/microphone_usage_description`
+  set. Android `permissions/internet=false` still holds (fully offline).
+- [ ] **[you]** Re-answer Play **Data Safety** and Apple **App Privacy**
+  questionnaires to declare the microphone permission (purpose: app
+  functionality / tuner). Data collected can still be answered **No** since
+  nothing is stored or transmitted — see `store/store-listing.md` for the
+  exact wording to submit.
+- [done] Privacy policy updated for the microphone disclosure: `store/privacy-policy.md`
+- [done] Privacy policy hosted at **https://cat-herding.net/metrognome/privacy** (portfolio site) — **[you]** re-publish the updated copy
 
 ## 4. Signing — [you]
 
@@ -57,14 +65,18 @@ Source of truth: `assets/branding/` (regenerate with
 - [ ] **[you]** Age rating questionnaire → 4+ / Everyone
 
 ### Screenshots (capture from the running app)
-- [ ] **[you]** iPhone 6.9" (1320×2868) — at least 1, up to 10; capture all four time-of-day scenes
+- [ ] **[you]** iPhone 6.9" (1320×2868) — at least 1, up to 10; capture all four time-of-day scenes **and the Tuner tab**
 - [ ] **[you]** iPad 13" (2064×2752) — required because the build is Universal
-- [ ] **[you]** Play phone screenshots — at least 2 (min 320px, max 3840px)
+- [ ] **[you]** Play phone screenshots — at least 2 (min 320px, max 3840px), include the Tuner tab
 - [ ] **[you]** Play **feature graphic** 1024×500 (required) — can reuse the gradient + gnome
 - [ ] **[you]** Optional 7"/10" tablet screenshots
 
 ### What's new copy (for App Store release notes & Play "What's new")
 ```
+• Instrument tuner — guitar, bass, ukulele, violin, or chromatic, with
+  faster and more accurate pitch detection
+• Tuner shows which way to adjust (flat/sharp) and a labeled cents scale
+• Adjustable noise-gate sensitivity for quiet rooms or noisy stages
 • Tap Tempo — tap along to set the BPM instantly, no typing required
 • Four time-of-day scenes: dawn, dusk, and night join the daytime grove
 • Night sky now shows a glowing moon
